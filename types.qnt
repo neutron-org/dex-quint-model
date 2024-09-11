@@ -10,6 +10,7 @@ module types {
     // each trancheId is a tuple of ((tokenA, tokenB), tick, trancheIndex)
     type TrancheKey = (TokenPair, TickIndex, TrancheIndex)
     
+    
     type LimitOrderType = 
         | GoodTillCancelled
         | GoodTillTime(int)
@@ -39,6 +40,11 @@ module types {
     type Coins = Addr -> TokenAccount
     type TokenAccount = Token -> int
     type Token = str
+    // we model Time as int. The special value -1 will denote that the time is None
+    // @audit-info: We could model it as an option type. However, I have a feeling it would increase
+    // boilerplate without clear winse. Am I wrong here?
+    type Time = int
+
 
     type Tranche = {
         // does not exist in the code: here, we want to be explicit about it.
@@ -49,14 +55,16 @@ module types {
         reservesTaker: Dec,
         totalMaker: Dec,
         totalTaker: Dec,
-        tick: int
+        // working directly with the tick instead of the `PriceTakerToMaker`
+        tick: int,
+        expirationTime: Time
 
     }
 
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> int
 
-    type OrderedTickList = List[TickIndex]
+    type OrderedList[_a] = List[_a]
 
     type State = {
         // 
@@ -69,9 +77,9 @@ module types {
         // @audit-info I want to use the type to inform the reader here. Is there a way to use it also
         // to enforce the order in the model?
         // @audit-info Would it make sense to separate the state into "actual info" and
-        // helper data structures (like orderedTicks below)?        
-        orderedTicks: TokenPair -> OrderedTickList,
-        tranchesPerTick: (TokenPair, TickIndex) -> Set[Tranche]
+        // helper data structures (like the OrderedLists below)?        
+        orderedTicks: TokenPair -> OrderedList[TickIndex],
+        orderedTranchesPerTick: (TokenPair, TickIndex) -> OrderedList[TrancheKey]
 
 
         // ... and then we'll need data structures for pools and deposits
