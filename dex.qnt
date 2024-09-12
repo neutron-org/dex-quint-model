@@ -13,11 +13,39 @@ module Dex {
     import types.* from "types"
     import consts.* from "consts"
     import utils.* from "utils"
+    import basicSpells.* from "basicSpells"
     
-    var state: State    
+    var state: State
+    var postViolation: bool
 
+    pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = amounts
+
+    pure def computeSharesDeposit(existingShares: int, amounts: (int, int)): (int, int) = amounts
+
+    pure def getPoolId(tokens: (Token, Token), tick: int, fee: int): PoolId = 
+      {tokenPair: tokens, tick: tick, fee: fee}
+
+    pure def orderTokenPair(pair: (Token, Token)): (Token, Token) = pair
+
+    pure def deposit(state: State, msg: DepositMsg) : State = {
+      state
+    }
+
+    pure def postDeposit(before: State, after: State, msg: DepositMsg): bool = val pair =  orderTokenPair(msg.tokenPair)
+                                                                               val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
+                                                                               val poolId = getPoolId(pair, msg.tick, msg.fee)
+                                                                               after.pools.has(poolId) and 
+                                                                               val poolBefore = before.pools.get(poolId)
+                                                                               val poolAfter = after.pools.get(poolId)
+                                                                               val inAmounts = computeAmountsDeposit(before.reserves, amounts)
+                                                                               val outShares = computeSharesDeposit(before.shares, inAmounts)
+                                                                               poolAfter.reserves._1 == poolBefore.reserves._1 + inAmounts._1 and 
+                                                                               poolAfter.reserves._2 == poolBefore.reserves._2 + inAmounts._2 and
+                                                                               after.sharesPrime.get(msg.receiver).has(poolId) and
+                                                                               after.sharesPrime.get(msg.receiver).get(poolId) == before.sharesPrime.get(msg.receiver).get(poolId) + outShares and
+                                                                               poolAfter.shares == poolBefore.shares + outShares
+                                                                               
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
-    
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
         val tick1to0 = normalizedCoinAndTick._3
         val price1To0 = priceFromTick(tick1to0)
@@ -34,6 +62,15 @@ module Dex {
         // TODO: unfinished
         state   
 
+    val postconditions = not(postViolation)
+    
+    action actionDeposit(msg: DepositMsg): bool = {
+      val newState = deposit(state, msg)
+      all {
+        state' = newState,
+        postViolation' = postDeposit(state, newState, msg)
+      }
+    }
 
     action step: bool = any {
         nondet c = oneOf(CREATORS)
@@ -70,6 +107,4 @@ module Dex {
 
     }
 
-
-
-    }
+  }

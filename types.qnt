@@ -18,6 +18,22 @@ module types {
 
     // MESSAGES
 
+    type Message = 
+      DepositSubType(DepositMsg)
+    | PlaceLimitOrderSubType(PlaceLimitOrderMsg)
+    | CancelLimitOrderSubType(CancelLimitOrderMsg)
+    | WithdrawLimitOrderSubType(WithdrawLimitOrderMsg)
+
+    //@audit-info : Simplified to only allow deposit in a single position
+    type DepositMsg = {
+            creator: Addr,
+            receiver: Addr,
+            tokenPair: (Token, Token),
+            amountPair: (int, int),
+            tick: TickIndex,
+            fee: int,
+        }
+
     type PlaceLimitOrderMsg = {
             creator: Addr,
             orderType: LimitOrderType,            
@@ -61,6 +77,17 @@ module types {
 
     }
 
+    type PoolId = {
+        tokenPair: (Token, Token),
+        tick: int,
+        fee: int
+    }
+
+    type Pool = {
+        reserves: (int, int),
+        shares: int
+    }
+
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> int
 
@@ -71,7 +98,11 @@ module types {
         tranches: TrancheKey -> Tranche,
         // balances of all the users in the system
         coins: Coins,
+        // @audit-info Can we consolidate both?
+        // @audit-info Can we get rid of multiple users? It is anyway sequential and I am not sure it is worth
         shares: Shares,
+        sharesPrime: Addr -> PoolId -> int,
+        pools: PoolId -> Pool,
 
         // We will need to iterate IN ORDER over the ticks corresponding to the same token pair
         // @audit-info I want to use the type to inform the reader here. Is there a way to use it also
@@ -84,5 +115,4 @@ module types {
 
         // ... and then we'll need data structures for pools and deposits
     }
-
 }
