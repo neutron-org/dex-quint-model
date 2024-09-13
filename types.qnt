@@ -34,6 +34,15 @@ module types {
             fee: int,
         }
 
+    type WithdrawMsg = {
+            creator: Addr,
+            receiver: Addr,
+            tokenPair: (Token, Token),
+            amount: int,
+            tick: TickIndex,
+            fee: int,
+        }
+
     type PlaceLimitOrderMsg = {
             creator: Addr,
             orderType: LimitOrderType,            
@@ -115,4 +124,6 @@ module types {
 
         // ... and then we'll need data structures for pools and deposits
     }
+
+    type Result = {state: State, error: str}
 }

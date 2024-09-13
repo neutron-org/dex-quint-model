@@ -18,6 +18,10 @@ module Dex {
     var state: State
     var postViolation: bool
 
+    pure def ok(state: State): Result = {state: state, result: "nil"}
+
+    pure def error(state: State, error: str): Result = {state: state, result: error}
+
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = amounts
 
     pure def computeSharesDeposit(existingShares: int, amounts: (int, int)): (int, int) = amounts
@@ -27,8 +31,8 @@ module Dex {
 
     pure def orderTokenPair(pair: (Token, Token)): (Token, Token) = pair
 
-    pure def deposit(state: State, msg: DepositMsg) : State = {
-      state
+    pure def deposit(state: State, msg: DepositMsg) : Result = {
+      ok(state)
     }
 
     pure def postDeposit(before: State, after: State, msg: DepositMsg): bool = val pair =  orderTokenPair(msg.tokenPair)
@@ -44,7 +48,13 @@ module Dex {
                                                                                after.sharesPrime.get(msg.receiver).has(poolId) and
                                                                                after.sharesPrime.get(msg.receiver).get(poolId) == before.sharesPrime.get(msg.receiver).get(poolId) + outShares and
                                                                                poolAfter.shares == poolBefore.shares + outShares
-                                                                               
+
+    pure def withdraw(state: State, msg: WithdrawMsg) : Result = {
+      ok(state)
+    }
+    
+    pure def postWithdraw(before: State, after: State, msg: DepositMsg): bool = true
+
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
         val tick1to0 = normalizedCoinAndTick._3
@@ -62,13 +72,23 @@ module Dex {
         // TODO: unfinished
         state   
 
-    val postconditions = not(postViolation)
+    val postconditions = postViolation
     
     action actionDeposit(msg: DepositMsg): bool = {
-      val newState = deposit(state, msg)
+      val result = deposit(state, msg)
       all {
-        state' = newState,
-        postViolation' = postDeposit(state, newState, msg)
+        require(result.error=="nil"),
+        state' = result.state,
+        postViolation' = postDeposit(state, result.state, msg)
+      }
+    }
+
+    action actionWithdraw(msg: DepositMsg): bool = {
+      val result = withdraw(state, msg)
+      all {
+        require(result.error=="nil"),
+        state' = result.state,
+        postViolation' = postWithdraw(state, result.state, msg)
       }
     }
 
