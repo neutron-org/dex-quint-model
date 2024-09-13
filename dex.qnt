@@ -34,8 +34,7 @@ module Dex {
         // TODO: unfinished
         state   
 
-
-    action step: bool = any {
+    action placeLimitOrderAction: bool = 
         nondet c = oneOf(CREATORS)
         nondet o = oneOf(ORDER_TYPES)
         nondet t = oneOf(TICKS)
@@ -46,16 +45,20 @@ module Dex {
             tick: t,
             tokenPair: token_pair
         }
-        state' = placeLimitOrder(state, limitOrderMsg),
+        state' = placeLimitOrder(state, limitOrderMsg)
 
+
+    action cancelLimitOrderAction: bool =
         nondet creator = oneOf(state.shares.keys())
         nondet trancheKey = oneOf(state.shares.get(creator).keys())
         val cancelLimitOrderMsg = {
             creator: creator,
             trancheKey: trancheKey
         }
-        state' = cancelLimitOrder(state, cancelLimitOrderMsg),
+        state' = cancelLimitOrder(state, cancelLimitOrderMsg)
 
+    
+    action withdrawLimitOrderAction: bool = 
         nondet creator = oneOf(state.shares.keys())
         nondet trancheKey = oneOf(state.shares.get(creator).keys())
         val withdrawLimitOrderMsg = {
@@ -67,6 +70,13 @@ module Dex {
             require(not(state.tranches.get(trancheKey).isFresh)),
             state' = withdrawLimitOrder(state, withdrawLimitOrderMsg)
         }
+
+    action step: bool = any {
+        placeLimitOrderAction,
+
+        cancelLimitOrderAction,
+
+        withdrawLimitOrderAction
 
     }
 
