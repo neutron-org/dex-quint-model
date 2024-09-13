@@ -95,7 +95,21 @@ module Dex {
         // TODO: unfinished
         state   
 
+    // Invariant: postconditions always hold
     val postconditions = postViolation
+
+    // Invariant: pool reserves are always greater or equal to zero 
+    val nonNegativeReserves = state.pools.keys().forall(poolId => val reserves = state.pools.get(poolId).reserves
+                                                                  reserves._1 >= 0 and reserves._2 >= 0)
+
+    // Invariant: shares supplies are always greater or equal to zero 
+    val nonNegativeSharesSupply = state.pools.keys().forall(poolId => state.pools.get(poolId).shares >= 0)
+
+    // Invariant: coin and share balances are zero or greater 
+    val nonNegativeBalances = CREATORS.forall(creator => val coins = state.coins.get(creator)
+                                                         val shares = state.sharesPrime.get(creator)
+                                                         coins.keys().forall(token => coins.get(token) >= 0) and
+                                                         shares.keys().forall(share => shares.get(share) >= 0))
     
     action actionDeposit(msg: DepositMsg): bool = {
       val result = deposit(state, msg)
