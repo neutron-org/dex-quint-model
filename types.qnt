@@ -12,9 +12,11 @@ module types {
     
     
     type LimitOrderType = 
+        | FillOrKill
+        | ImmediateOrCancel
         | GoodTillCancelled
-        | GoodTillTime(int)
-        // TODO: more types still need to be added
+        | GoodTillTime(BlockTime)
+        | JustInTime
 
     // MESSAGES
 
@@ -22,7 +24,7 @@ module types {
             creator: Addr,
             orderType: LimitOrderType,            
             // we have to choose tickIndex because the log operation is missing
-            // @audit-info : If we will really need log, what are our Quint options?
+            // @audit-info : If we will really need the log operation, what are our Quint options?
             tick: TickIndex,
             tokenPair: (Token, Token)
         }
@@ -43,7 +45,7 @@ module types {
     // we model Time as int. The special value -1 will denote that the time is None
     // @audit-info We could model it as an option type. However, I have a feeling it would increase
     // boilerplate without clear wins. Am I wrong here?
-    type Time = int
+    type BlockTime = int
 
     // @audit-info Is there a way to factor out the two types below? So that
     // Liquidity = LimitOrderTranche | PoolReserves, and then they are defined elsewhere?
@@ -58,16 +60,21 @@ module types {
             // should only be true until a first exchange happens through the tranche
             // isFresh <=> reservesMaker == totalMaker
             isFresh: bool,
-            reservesMaker: Dec,
-            reservesTaker: Dec,
-            totalMaker: Dec,
-            totalTaker: Dec,
+            reservesMaker: int,
+            reservesTaker: int,
+            totalMaker: int,
+            totalTaker: int,
             // working directly with the tick instead of the `PriceTakerToMaker`
             tick: int,
-            expirationTime: Time
+            expirationTime: BlockTime,
+            trancheKey: TrancheKey,
+            // @audit-issue This is saved in the code under TrancheUser. Is there a good reason
+            // for why this could not be udner tranche?
+            makerDenomination: Token,
+            takerDenomination: Token
         }
 
-
+    // @audit-issue We must make sure that `Shares` always contains all the Addr (Addr is not removed and is initialized)
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> int
 
@@ -78,7 +85,7 @@ module types {
         tranches: TrancheKey -> Tranche,
         // balances of all the users in the system
         coins: Coins,
-        shares: Shares,
+        tranches_shares: Shares,
         // we will model time by blocks (integer value). 
         // In the code, it is done through BlockTime. Departing from that. 
         // @audit-info could that cause any issue down the line?

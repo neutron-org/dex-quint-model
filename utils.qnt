@@ -8,6 +8,20 @@ module utils {
     // This is a readability helper function: to put "require" around boolean conditions
     pure def require(cond: bool): bool = cond
 
+    // TRANCHE related functions
+    pure def percentFilled(t: Tranche) : Dec =
+        fromRatio(t.totalMaker - t.reservesMaker, t.totalMaker)
+    
+    pure def percentUnfilled(t: Tranche) : Dec =
+        fromRatio(t.reservesMaker, t.totalMaker)
+    
+    pure def userTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
+        val userShare = users_share_account.get(t.trancheKey)
+        fromRatio(userShare, t.totalMaker)
+
+
+    // -------
+    
     pure def priceFromTick(tick: int) : Dec =
         BASE_PRICE.pow(-tick)
 
@@ -19,7 +33,7 @@ module utils {
         token_num_values.get(t1) < token_num_values.get(t2)
 
 
-        
+    
     pure def normalizeCoinAndTick(tokenPair: (Token, Token), tick: int) : (Token, Token, int) =
         val tokenIn = tokenPair._1
         val tokenOut = tokenPair._2
