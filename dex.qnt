@@ -26,6 +26,8 @@ module Dex {
 
     pure def computeSharesDeposit(existingShares: int, amounts: (int, int)): (int, int) = amounts
 
+    pure def computeAmountsWithdraw(reserves: (int, int), shares: int): (int, int) = reserves
+
     pure def getPoolId(tokens: (Token, Token), tick: int, fee: int): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
 
@@ -38,22 +40,43 @@ module Dex {
     pure def postDeposit(before: State, after: State, msg: DepositMsg): bool = val pair =  orderTokenPair(msg.tokenPair)
                                                                                val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
                                                                                val poolId = getPoolId(pair, msg.tick, msg.fee)
+                                                                               // pool exists
                                                                                after.pools.has(poolId) and 
                                                                                val poolBefore = before.pools.get(poolId)
                                                                                val poolAfter = after.pools.get(poolId)
                                                                                val inAmounts = computeAmountsDeposit(before.reserves, amounts)
                                                                                val outShares = computeSharesDeposit(before.shares, inAmounts)
+                                                                               // reserves are updated
                                                                                poolAfter.reserves._1 == poolBefore.reserves._1 + inAmounts._1 and 
                                                                                poolAfter.reserves._2 == poolBefore.reserves._2 + inAmounts._2 and
+                                                                               // shares are minted
                                                                                after.sharesPrime.get(msg.receiver).has(poolId) and
                                                                                after.sharesPrime.get(msg.receiver).get(poolId) == before.sharesPrime.get(msg.receiver).get(poolId) + outShares and
                                                                                poolAfter.shares == poolBefore.shares + outShares
-
+                                                                               // @audit-info is deposit taking the coins from the user accounts as well or this is done outside the function?
     pure def withdraw(state: State, msg: WithdrawMsg) : Result = {
       ok(state)
     }
     
-    pure def postWithdraw(before: State, after: State, msg: DepositMsg): bool = true
+    pure def postWithdraw(before: State, after: State, msg: DepositMsg): bool = val pair =  orderTokenPair(msg.tokenPair)
+                                                                                val poolId = getPoolId(pair, msg.tick, msg.fee)
+                                                                                val poolBefore = before.pools.get(poolId)
+                                                                                val poolAfter = after.pools.get(poolId)
+                                                                                val outAmounts = computeAmountsWithdraw(before.reserves, msg.amount)
+                                                                                // reserves are updated
+                                                                                poolAfter.reserves._1 == poolBefore.reserves._1 - outAmounts._1 and poolAfter.reserves._1 >= 0 and
+                                                                                poolAfter.reserves._2 == poolBefore.reserves._2 - outAmounts._2 and poolAfter.reserves._2 >= 0 and
+                                                                                // coins are transferred
+                                                                                after.coins.get(msg.receiver).has(pair._1) and after.coins.get(msg.receiver).has(pair._2) and
+                                                                                before.coins.get(msg.receiver).has(pair._1) implies after.coins.get(msg.receiver).get(pair._1) == before.coins.get(msg.receiver).get(pair._1) + outAmounts._1 and
+                                                                                not(before.coins.get(msg.receiver).has(pair._1)) implies after.coins.get(msg.receiver).get(pair._1) == outAmounts._1 and
+                                                                                before.coins.get(msg.receiver).has(pair._2) implies after.coins.get(msg.receiver).get(pair._2) == before.coins.get(msg.receiver).get(pair._2) + outAmounts._2 and
+                                                                                not(before.coins.get(msg.receiver).has(pair._2)) implies after.coins.get(msg.receiver).get(pair._2) == outAmounts._2 and
+                                                                                // shares are burned
+                                                                                not(after.sharesPrime.get(msg.creator).has(poolId)) implies (before.sharesPrime.get(msg.creator).has(poolId) and
+                                                                                                                                             before.sharesPrime.has(msg.creator).has(poolId) == msg.amount) and
+                                                                                after.sharesPrime.get(msg.creator).has(poolId) implies after.sharesPrime.get(msg.creator).has(poolId) == before.sharesPrime.get(msg.creator).has(poolId) - msg.amount and
+                                                                                poolAfter.shares >= 0 and poolAfter.shares == poolBefore.shares - msg.amount
 
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
