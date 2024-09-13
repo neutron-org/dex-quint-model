@@ -70,13 +70,23 @@ module Dex {
             require(not(state.tranches.get(trancheKey).isFresh)),
             state' = withdrawLimitOrder(state, withdrawLimitOrderMsg)
         }
+    
+    action advanceTimeAction: bool = 
+        nondet t = oneOf(1.to(MAX_FUTURE_BLOCKS))
+        state' = {
+            blockNumber: state.blockNumber + t,
+            ... state
+        }
+        
 
     action step: bool = any {
         placeLimitOrderAction,
 
         cancelLimitOrderAction,
 
-        withdrawLimitOrderAction
+        withdrawLimitOrderAction,
+
+        advanceTimeAction
 
     }
 

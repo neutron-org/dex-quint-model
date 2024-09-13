@@ -79,6 +79,10 @@ module types {
         // balances of all the users in the system
         coins: Coins,
         shares: Shares,
+        // we will model time by blocks (integer value). 
+        // In the code, it is done through BlockTime. Departing from that. 
+        // @audit-info could that cause any issue down the line?
+        blockNumber: int,
 
         // We will need to iterate IN ORDER over the ticks corresponding to the same token pair
         // @audit-info I want to use the type to inform the reader here. Is there a way to use it also
@@ -93,6 +97,8 @@ module types {
         //     - between two poolReserves, the one with lower fee comes first
         // - then come the limit orders.
         //     - the limit orders are ordered by their time of arrival(?)
+        // 
+        // In the code, this is achieved by the way in which the keys are constructed.
         // @audit-info Use the ordered list insertion from spells
         orderedLiquidityPerTick: (TokenPair, TickIndex) -> OrderedList[Liquidity]
 
