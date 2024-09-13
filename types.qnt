@@ -41,25 +41,32 @@ module types {
     type TokenAccount = Token -> int
     type Token = str
     // we model Time as int. The special value -1 will denote that the time is None
-    // @audit-info: We could model it as an option type. However, I have a feeling it would increase
-    // boilerplate without clear winse. Am I wrong here?
+    // @audit-info We could model it as an option type. However, I have a feeling it would increase
+    // boilerplate without clear wins. Am I wrong here?
     type Time = int
 
+    // @audit-info Is there a way to factor out the two types below? So that
+    // Liquidity = LimitOrderTranche | PoolReserves, and then they are defined elsewhere?
+    // I tried, but the checker complained about it.
+    type Liquidity = 
+        | LimitOrderTranche(Tranche)                
+        // @audit-bug merge this in the merging session with Manu
+        | PoolReserves
 
     type Tranche = {
-        // does not exist in the code: here, we want to be explicit about it.
-        // should only be true until a first exchange happens through the tranche
-        // isFresh <=> reservesMaker == totalMaker
-        isFresh: bool,
-        reservesMaker: Dec,
-        reservesTaker: Dec,
-        totalMaker: Dec,
-        totalTaker: Dec,
-        // working directly with the tick instead of the `PriceTakerToMaker`
-        tick: int,
-        expirationTime: Time
+            // does not exist in the code: here, we want to be explicit about it.
+            // should only be true until a first exchange happens through the tranche
+            // isFresh <=> reservesMaker == totalMaker
+            isFresh: bool,
+            reservesMaker: Dec,
+            reservesTaker: Dec,
+            totalMaker: Dec,
+            totalTaker: Dec,
+            // working directly with the tick instead of the `PriceTakerToMaker`
+            tick: int,
+            expirationTime: Time
+        }
 
-    }
 
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> int
@@ -79,7 +86,15 @@ module types {
         // @audit-info Would it make sense to separate the state into "actual info" and
         // helper data structures (like the OrderedLists below)?        
         orderedTicks: TokenPair -> OrderedList[TickIndex],
-        orderedTranchesPerTick: (TokenPair, TickIndex) -> OrderedList[TrancheKey]
+
+        // The order here must be:
+        // - first by tick
+        // - if the tick is the same, then poolReserves come first.
+        //     - between two poolReserves, the one with lower fee comes first
+        // - then come the limit orders.
+        //     - the limit orders are ordered by their time of arrival(?)
+        // @audit-info Use the ordered list insertion from spells
+        orderedLiquidityPerTick: (TokenPair, TickIndex) -> OrderedList[Liquidity]
 
 
         // ... and then we'll need data structures for pools and deposits
