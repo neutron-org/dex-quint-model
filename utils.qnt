@@ -15,8 +15,12 @@ module utils {
     pure def percentUnfilled(t: Tranche) : Dec =
         fromRatio(t.reservesMaker, t.totalMaker)
     
-    pure def userTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
-        val userShare = users_share_account.get(t.trancheKey)
+    pure def userTotalTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
+        val userShare = users_share_account.get(t.trancheKey).sharesOwned
+        fromRatio(userShare, t.totalMaker)
+
+    pure def userNonWithdrawnTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
+        val userShare = users_share_account.get(t.trancheKey).sharesOwned - users_share_account.get(t.trancheKey).sharesWithdrawn
         fromRatio(userShare, t.totalMaker)
 
 

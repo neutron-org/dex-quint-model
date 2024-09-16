@@ -76,7 +76,10 @@ module types {
 
     // @audit-issue We must make sure that `Shares` always contains all the Addr (Addr is not removed and is initialized)
     type Shares = Addr -> ShareAccount
-    type ShareAccount = TrancheKey -> int
+    type ShareAccount = TrancheKey -> {
+            sharesOwned: int,
+            sharesWithdrawn: int
+        }
 
     type OrderedList[_a] = List[_a]
 

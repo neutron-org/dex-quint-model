@@ -28,9 +28,12 @@ module Dex {
 
 
     pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =
+    // @audit-info I am using "MakerToekn" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
+        val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
+        val users_tranches_before = before.tranches_shares.get(msg.creator).keys()
+        val users_tranches_after = after.tranches_shares.get(msg.creator).keys()
         and {
-            val users_tranches_before = before.tranches_shares.get(msg.creator).keys()
-            val users_tranches_after = after.tranches_shares.get(msg.creator).keys()
+        
             
             // there is at most one removed tranche from the set of users' tranches
             // and this is exactly the tranche that the user requested to be cancelled
@@ -42,8 +45,7 @@ module Dex {
                     )
             },
             // user received their fair amount of maker tokens back
-            // @audit-info I am using "MakerToekn" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
-            val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
+            
             // this multiplication corresponds to the point 2a from the spec document
             // I am wondering if it is the same as `percentUnfilled * totalAmountOfUserShares` ==> pending confirmation from the dev team
             val cancelAmountOutMakerToken = 
@@ -53,20 +55,63 @@ module Dex {
                     mulInt(
                         mul(
                             percentUnfilled(before.tranches.get(msg.trancheKey)),
-                            userTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))                    
+                            userTotalTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))                    
                             ),
                         tranche_before.totalMaker
                     )
                 )
-            cancelAmountOutMakerToken == 
+            and{
+                // the user's balance has increased for what was cancelled
+                cancelAmountOutMakerToken == 
                 after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
-                before.coins.get(msg.creator).get(tranche_before.makerDenomination)
+                before.coins.get(msg.creator).get(tranche_before.makerDenomination),
+                // the totalMaker has decreased for what was cancelled
+                cancelAmountOutMakerToken ==
+                before.tranches.get(msg.trancheKey).totalMaker -
+                after.tranches.get(msg.trancheKey).totalMaker
+
+            },
+            
             
             
             
             // This part corresponds to the point 2b from the spec document
             // TODO: continue here with the postcondition 2b (should be fairly similar to 2a)
-
+            
+            val cancelAmountOutTakerToken = 
+                truncate(
+                    mulInt(
+                        mul(
+                            percentFilled(before.tranches.get(msg.trancheKey)),
+                            userNonWithdrawnTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))
+                        ),
+                        tranche_before.totalTaker
+                    )
+                )
+            and{
+                // the user's taker token balance has increased for what was withdrawn when cancelling
+                cancelAmountOutTakerToken == 
+                    after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
+                    before.coins.get(msg.creator).get(tranche_before.takerDenomination),
+                // the totalTaker has decreased for what was cancelled
+                cancelAmountOutTakerToken ==
+                    before.tranches.get(msg.trancheKey).totalTaker -
+                    after.tranches.get(msg.trancheKey).totalTaker
+            },
+            
+            // make sure that the user's withdrawn shares are updated correctly
+            val withdrawnShares = 
+                truncate(
+                    mul(
+                        percentFilled(before.tranches.get(msg.trancheKey)),
+                        userNonWithdrawnTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))
+                    )
+                )
+            
+            before.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesOwned 
+            ==
+            after.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn   
+            
             
         }
 
