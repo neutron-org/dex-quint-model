@@ -9,17 +9,17 @@ module utils {
     pure def require(cond: bool): bool = cond
 
     // TRANCHE related functions
-    pure def percentFilled(t: Tranche) : Dec =
+    pure def calculatePercentFilled(t: Tranche) : Dec =
         fromRatio(t.totalMaker - t.reservesMaker, t.totalMaker)
     
-    pure def percentUnfilled(t: Tranche) : Dec =
+    pure def calculatePercentUnfilled(t: Tranche) : Dec =
         fromRatio(t.reservesMaker, t.totalMaker)
     
-    pure def userTotalTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
+    pure def calculateUserTotalTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
         val userShare = users_share_account.get(t.trancheKey).sharesOwned
         fromRatio(userShare, t.totalMaker)
 
-    pure def userNonWithdrawnTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
+    pure def calculateUserNonWithdrawnTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
         val userShare = users_share_account.get(t.trancheKey).sharesOwned - users_share_account.get(t.trancheKey).sharesWithdrawn
         fromRatio(userShare, t.totalMaker)
 
