@@ -14,9 +14,7 @@ module Dex {
     import consts.* from "consts"
     import utils.* from "utils"
     
-    var state: State 
-
-    
+    var state: State     
 
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
     
@@ -26,7 +24,7 @@ module Dex {
         // TODO: unfinished
         state
 
-    pure def computeWithdrawAmountMakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
+    pure def computeWithdrawShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
         // @audit-issue Should this be truncate? Rounding discussion
         truncate(
             mul(
@@ -48,7 +46,7 @@ module Dex {
             )
         )
     
-    pure def computeCancelAmountTakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec, totalTaker: int): int = 
+    pure def computeWithdrawAmountTakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec, totalTaker: int): int = 
         truncate(
             mulInt(
                 mul(
@@ -99,7 +97,8 @@ module Dex {
             val percentFilled = calculatePercentFilled(before.tranches.get(msg.trancheKey))     
             val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))       
             val cancelAmountOutTakerToken = 
-                computeCancelAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche_before.totalTaker)
+                // we are using "compute**Withdraw**..." because when cancelling, the user is also withdrawing their unwithdrawn share
+                computeWithdrawAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche_before.totalTaker)
 
             and{
                 // the user's taker token balance has increased for what was withdrawn when cancelling
@@ -123,6 +122,32 @@ module Dex {
     pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
         // TODO: unfinished
         state 
+
+    pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
+        val withdrawnShares: int = computeWithdrawShares(
+            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
+            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranches_shares.get(msg.creator))
+        )
+        val withdrawnAmountTakerToken: int = computeWithdrawAmountTakerToken(
+            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
+            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranches_shares.get(msg.creator)),
+            before.tranches.get(msg.trancheKey).totalTaker
+        )
+        and {
+            // the user's taker balance has increased for what was withdrawn
+            withdrawnAmountTakerToken == 
+                after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
+                before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
+            // the totalTaker has decreased for what was withdrawn
+            withdrawnAmountTakerToken ==
+                before.tranches.get(msg.trancheKey).totalTaker -
+                after.tranches.get(msg.trancheKey).totalTaker,
+            // the user's shares withdrawn have increased appropriately
+            withdrawnShares == 
+                after.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
+                before.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn
+            
+        }
 
 
     pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
