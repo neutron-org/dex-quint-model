@@ -17,7 +17,7 @@ module Dex {
     var state: State     
 
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
-    
+        // TODO: this should be separated into the case when the swap happens, and when the maker order is placed
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
         val tick1to0 = normalizedCoinAndTick._3
         val price1To0 = priceFromTick(tick1to0)
@@ -149,10 +149,47 @@ module Dex {
             
         }
 
-
+    
     pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
         // TODO: unfinished
         state   
+
+
+    pure def placeLimitMakerOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
+        val normalizedTokenPair: TokenPair = normalizeCoinAndTick(msg.tokenPair, msg.tick)._1
+        val normalizedTick: TickIndex = normalizeCoinAndTick(msg.tokenPair, msg.tick)._2        
+        val trancheIndex = calculateTrancheIndex(normalizedTokenPair, normalizedTick, before.tranches.keys())
+        val trancheKey = (normalizedTokenPair, normalizedTick, trancheIndex)
+        and {
+            // the tranche key exists in the after state
+
+            after.tranches.keys().contains(trancheKey),
+        
+            // The share account per user and the tranche is there, and its values are updated correctly
+            val userAccountBefore = before.tranches_shares.get(msg.creator)
+            val userAccounotAfter = after.tranches_shares.get(msg.creator)
+            and {
+                userAccounotAfter.keys().contains(trancheKey),
+                userAccounotAfter.get(trancheKey).sharesOwned ==
+                    if (userAccountBefore.keys().contains(trancheKey)) {
+                        userAccountBefore.get(trancheKey).sharesOwned + msg.amountIn
+                    } else {
+                        msg.amountIn
+                    },
+                
+                val increasedTrancheMaker =
+                    if (before.tranches.keys().contains(trancheKey)) {
+                        // the difference between the after and the before
+                        after.tranches.get(trancheKey).totalMaker - before.tranches.get(trancheKey).totalMaker
+                    } else {
+                        // just what is in the after state
+                        after.tranches.get(trancheKey).totalMaker
+                    }
+                    increasedTrancheMaker == msg.amountIn
+            }            
+        }
+        
+        
 
     action placeLimitOrderAction: bool = 
         nondet c = oneOf(CREATORS)

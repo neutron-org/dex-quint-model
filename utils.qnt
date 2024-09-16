@@ -38,11 +38,21 @@ module utils {
 
 
     
-    pure def normalizeCoinAndTick(tokenPair: (Token, Token), tick: int) : (Token, Token, int) =
+    pure def normalizeCoinAndTick(tokenPair: (Token, Token), tick: int) : ((Token, Token), int) =
         val tokenIn = tokenPair._1
         val tokenOut = tokenPair._2
         if (tokenLT(tokenIn, tokenOut, TOKEN_NUM_VALUES)) 
-            (tokenIn, tokenOut, tick)
+            ((tokenIn, tokenOut), tick)
         else 
-            (tokenOut, tokenIn, -tick) 
+            ((tokenOut, tokenIn), -tick)         
+    
+    
+    
+    pure def calculateTrancheIndex(tokenPair: TokenPair, tick: TickIndex, existingTranchesKeys: Set[TrancheKey]): int = 
+    
+        // TODO: NOT-IMPLEMENTED
+        -1
+    
     }
+
+    

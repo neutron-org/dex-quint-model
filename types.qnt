@@ -26,7 +26,8 @@ module types {
             // we have to choose tickIndex because the log operation is missing
             // @audit-info : If we will really need the log operation, what are our Quint options?
             tick: TickIndex,
-            tokenPair: (Token, Token)
+            tokenPair: (Token, Token),
+            amountIn: int
         }
         
     type CancelLimitOrderMsg = {
@@ -92,7 +93,10 @@ module types {
         // we will model time by blocks (integer value). 
         // In the code, it is done through BlockTime. Departing from that. 
         // @audit-info could that cause any issue down the line?
-        blockNumber: int,
+        blockNumber: BlockTime,
+
+        // In the implementation, these are connected to the block numbers. 
+        lastTrancheIndex: int,
 
         // We will need to iterate IN ORDER over the ticks corresponding to the same token pair
         // @audit-info I want to use the type to inform the reader here. Is there a way to use it also
