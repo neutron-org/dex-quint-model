@@ -33,8 +33,6 @@ module Dex {
     pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
 
-    pure def orderTokenPair(pair: (Token, Token)): (Token, Token) = pair
-
     pure def deposit(state: State, msg: DepositMsg) : Result = {
       ok(state)
     }

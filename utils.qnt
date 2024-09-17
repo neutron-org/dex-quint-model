@@ -18,7 +18,8 @@ module utils {
         // assuming that both tokens are in the TOKEN_NUM_VALUES
         token_num_values.get(t1) < token_num_values.get(t2)
 
-
+    pure def orderTokenPair(pair: (Token, Token)): (Token, Token) =
+      if (tokenLT(pair._1, pair._2, TOKEN_NUM_VALUES)) pair else (pair._2, pair._1)
         
     pure def normalizeCoinAndTick(tokenPair: (Token, Token), tick: int) : (Token, Token, int) =
         val tokenIn = tokenPair._1
