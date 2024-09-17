@@ -15,4 +15,6 @@ module consts {
     // We will use this value to denote how much we can advance time and (at the same time!) the maximum
     // good_til value for a limit order
     pure val MAX_FUTURE_BLOCKS: int = 10
+
+    pure val MAX_AMOUNT: int = 100
     }

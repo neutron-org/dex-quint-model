@@ -9,6 +9,12 @@ module types {
     type TrancheIndex = int
     // each trancheId is a tuple of ((tokenA, tokenB), tick, trancheIndex)
     type TrancheKey = (TokenPair, TickIndex, TrancheIndex)
+
+    type PoolId = {
+        tokenPair: (Token, Token),
+        tick: int,
+        fee: int
+    }
     
     
     type LimitOrderType = 
@@ -53,7 +59,7 @@ module types {
     // I tried, but the checker complained about it.
     type Liquidity = 
         | LimitOrderTranche(Tranche)                
-        // @audit-bug merge this in the merging session with Manu
+        // @audit-info merge this in the merging session with Manu
         | PoolReserves
 
     type Tranche = {

@@ -14,15 +14,41 @@ module Dex {
     import consts.* from "consts"
     import utils.* from "utils"
     
-    var state: State     
+    var state: State  
+
+    // this function returns:
+    //  - a mapping from poolIds to amounts that should be swapped with this pool
+    //  - a mapping from trancheKeys to amounts that should be filled with this tranche
+    //  - an integer saying how much of the order amount is still remaining
+    pure def computeMakerOrderMatches(state: State, msg: PlaceLimitOrderMsg) : (PoolId->int, TrancheKey-> int, int) = 
+        (Map(), Map(), -1)
+
+    pure def swap(state: State, poolId: PoolId, amount: int) : State = state
+
+    pure def fillTranche(state: State, trancheKey: TrancheKey, amount: int) : State = state
+
+    pure def createNewTranche(state: State, msg: PlaceLimitOrderMsg, amount: int) : State = state
 
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
         // TODO: this should be separated into the case when the swap happens, and when the maker order is placed
-        val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
-        val tick1to0 = normalizedCoinAndTick._3
-        val price1To0 = priceFromTick(tick1to0)
-        // TODO: unfinished
-        state
+        // Depending on the kind of order, a part should be immediately swapped and a part may still be placed as a maker order        
+        
+        val fulfilledOrderInfo = computeMakerOrderMatches(state, msg)
+        val poolsToSwap = fulfilledOrderInfo._1
+        val tranchesToFill = fulfilledOrderInfo._2
+        val remainingAmount = fulfilledOrderInfo._3
+        val stateAfterSwaps = poolsToSwap.keys().fold(
+            state,
+            (state, poolId) => swap(state, poolId, poolsToSwap.get(poolId))
+        )
+
+        val stateAfterFills = tranchesToFill.keys().fold(
+            stateAfterSwaps,
+            (state, trancheKey) => fillTranche(state, trancheKey, tranchesToFill.get(trancheKey))
+        )
+
+        // if there is still some amount left, we need to create a new tranche
+        createNewTranche(stateAfterFills, msg, remainingAmount)
 
     pure def computeWithdrawShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
         // @audit-issue Should this be truncate? Rounding discussion
@@ -58,8 +84,7 @@ module Dex {
                 )
     
 
-    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =
-        // @audit-info I am using "MakerToken" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
+    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =        
         val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
         val users_tranches_before = before.tranches_shares.get(msg.creator).keys()
         val users_tranches_after = after.tranches_shares.get(msg.creator).keys()
@@ -79,6 +104,7 @@ module Dex {
             // I am wondering if it is the same as `percentUnfilled * totalAmountOfUserShares` ==> pending confirmation from the dev team
             val percentUnfilled = calculatePercentUnfilled(before.tranches.get(msg.trancheKey))
             val userTotalTrancheShare = calculateUserTotalTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))                    
+            // @audit-info I am using "MakerToken" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
             val cancelAmountOutMakerToken =                 
                 computeCancelAmountMakerToken(percentUnfilled, userTotalTrancheShare, tranche_before.totalMaker)
             and{
@@ -97,7 +123,7 @@ module Dex {
             val percentFilled = calculatePercentFilled(before.tranches.get(msg.trancheKey))     
             val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))       
             val cancelAmountOutTakerToken = 
-                // we are using "compute**Withdraw**..." because when cancelling, the user is also withdrawing their unwithdrawn share
+                // we are using "computeWITHDRAW..." because when cancelling, the user is also withdrawing their unwithdrawn share
                 computeWithdrawAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche_before.totalTaker)
 
             and{
@@ -154,39 +180,52 @@ module Dex {
         // TODO: unfinished
         state   
 
+    // 
+    pure def placeLimitOrderMatchedPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
+        true
 
-    pure def placeLimitMakerOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
-        val normalizedTokenPair: TokenPair = normalizeCoinAndTick(msg.tokenPair, msg.tick)._1
-        val normalizedTick: TickIndex = normalizeCoinAndTick(msg.tokenPair, msg.tick)._2        
-        val trancheIndex = calculateTrancheIndex(normalizedTokenPair, normalizedTick, before.tranches.keys())
-        val trancheKey = (normalizedTokenPair, normalizedTick, trancheIndex)
+    // This is a postcondition only for the part of placing an order that is a maker order, creating a new tranche
+    pure def placeLimitMakerOrderPostcondition(
+        before: State, 
+        tokenPair: TokenPair,        
+        tick: TickIndex,
+        amountIn: int,
+        creator: Addr,
+        after: State) : bool =
+
+        
+        val trancheIndex = calculateTrancheIndex(tokenPair, tick, before.tranches.keys())
+        val trancheKey = (tokenPair, tick, trancheIndex)
         and {
             // the tranche key exists in the after state
-
             after.tranches.keys().contains(trancheKey),
         
             // The share account per user and the tranche is there, and its values are updated correctly
-            val userAccountBefore = before.tranches_shares.get(msg.creator)
-            val userAccounotAfter = after.tranches_shares.get(msg.creator)
+            val userAccountBefore = before.tranches_shares.get(creator)
+            val userAccounotAfter = after.tranches_shares.get(creator)
             and {
                 userAccounotAfter.keys().contains(trancheKey),
+                // the sharesOwned is increased: the split is depending on whether the user had already something in the
+                // tranche or not
                 userAccounotAfter.get(trancheKey).sharesOwned ==
                     if (userAccountBefore.keys().contains(trancheKey)) {
-                        userAccountBefore.get(trancheKey).sharesOwned + msg.amountIn
+                        userAccountBefore.get(trancheKey).sharesOwned + amountIn
                     } else {
-                        msg.amountIn
+                        amountIn
                     },
                 
                 val increasedTrancheMaker =
+                    // the difference in value of totalMaker in the pre and post state. 
+                    // The split is based on whether the tranche existed before or was newly created
                     if (before.tranches.keys().contains(trancheKey)) {
-                        // the difference between the after and the before
+                        
                         after.tranches.get(trancheKey).totalMaker - before.tranches.get(trancheKey).totalMaker
                     } else {
                         // just what is in the after state
                         after.tranches.get(trancheKey).totalMaker
                     }
-                    increasedTrancheMaker == msg.amountIn
-            }            
+                    increasedTrancheMaker == amountIn
+            }   
         }
         
         
@@ -196,11 +235,16 @@ module Dex {
         nondet o = oneOf(ORDER_TYPES)
         nondet t = oneOf(TICKS)
         nondet token_pair = oneOf(TOKEN_PAIRS)        
+        // @audit-info
+        // with this choice, we are not modelling user's funds. The assumption is that the user has as much as needed.
+        // This is a simplification that we can revisit later.
+        nondet amount = oneOf(1.to(MAX_AMOUNT))
         val limitOrderMsg = {
             creator: c,
             orderType: o,
             tick: t,
-            tokenPair: token_pair
+            tokenPair: token_pair,
+            amountIn: amount
         }
         state' = placeLimitOrder(state, limitOrderMsg)
 
@@ -224,6 +268,11 @@ module Dex {
         }
         all {
             require(state.tranches.keys().contains(trancheKey)),
+            // we are not allowing  withdrawing from fresh tranches (there was no trading)
+            // @audit-info Should we handle the error at this level or should we let individual functions handle it?
+            // This way is cleaner. The problem is that the simulation will not try at all then those cases where a withdraw on a non-fresh
+            // tranche is attempted.
+            // maybe it make sense to use require here at places where we can be confident that the code will enforce those assumptions
             require(not(state.tranches.get(trancheKey).isFresh)),
             state' = withdrawLimitOrder(state, withdrawLimitOrderMsg)
         }
@@ -235,9 +284,9 @@ module Dex {
         }
 
     action advanceMultipleBlocksAction: bool =
-        nondet t = oneOf(1.to(MAX_FUTURE_BLOCKS))
+        nondet timestep = oneOf(1.to(MAX_FUTURE_BLOCKS))
         state' = {
-            blockNumber: state.blockNumber + t,
+            blockNumber: state.blockNumber + 2,
             ... state
         }
 
@@ -248,6 +297,7 @@ module Dex {
             advanceSingleBlockAction,
             advanceMultipleBlocksAction
         }        
+        
         
 
     action step: bool = any {
@@ -263,4 +313,4 @@ module Dex {
 
 
 
-    }
+}
