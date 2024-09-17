@@ -8,9 +8,10 @@ module utils {
     // This is a readability helper function: to put "require" around boolean conditions
     pure def require(cond: bool): bool = cond
 
+    pure def min(a,b) = if(a<b) a else b
+
     pure def priceFromTick(tick: int) : Dec =
         BASE_PRICE.pow(-tick)
-
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int) : bool =
         // @audit-info What is the best practice to encode assumptions on pure functions,

@@ -24,11 +24,30 @@ module Dex {
 
     pure def computeAmountFromPrice(usedAmount: int, price: Dec): int
 
-    pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = amounts
+    // @audit-info there's a Quint error I cannot resolve
+    pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) =
+      val inAmount0 = if (reserves._2 > 0)
+                        min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())
+                      else 0 //amounts._1
+      val inAmount1 = if (reserves._1 > 0)
+                        min(amounts._2, amounts._1.fromInt().mul(reserves._2.fromInt()).div(reserves._1.fromInt()).truncate())
+                      else 0 //amounts._2
+      (inAmount0, inAmount1)
 
-    pure def computeSharesDeposit(existingShares: int, amounts: (int, int)): (int, int) = amounts
+    // @audit-info when to truncate?
+    // can totalPoolValue be 0? Invariant candidate!
+    // LP.1 in specification invariants
+    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), price1to0: Dec): int =
+      val totalPoolValue = reserves._1 + reserves._2.fromInt().mul(price1to0)
+      val shareValue = existingShares.fromInt.div(totalPoolValue).truncate
+      val depositValue = amounts._1 + amounts._2.fromInt().mul(price1to0).truncate
+      depositValue * shareValue
 
-    pure def computeAmountsWithdraw(reserves: (int, int), totalShares: int, shares: int): (int, int) = reserves
+    // LP.4 in specification invariants
+    // Assumes that shares > 0
+    pure def computeAmountsWithdraw(reserves: (int, int), totalShares: int, shares: int): (int, int) =
+      val proRataShare = totalShares.fromInt.div(shares.fromInt).truncate()
+      (proRataShare * reserves._1, proRataShare * reserves._2)
 
     pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
@@ -64,6 +83,7 @@ module Dex {
       after.sharesPrime.get(msg.receiver).get(poolId) == if (before.sharesPrime.get(msg.receiver).has(poolId)) before.sharesPrime.get(msg.receiver).get(poolId) + outShares
                                                          else outShares and
       sharesAfter == sharesBefore + outShares
+      // ** Specification invariants **
 
     pure def withdraw(state: State, msg: WithdrawMsg) : Result = {
       ok(state)
@@ -91,6 +111,7 @@ module Dex {
       after.sharesPrime.get(msg.creator).get(poolId) >= 0 and
       after.sharesPrime.get(msg.creator).get(poolId) == before.sharesPrime.get(msg.creator).has(poolId) - msg.amount and
       sharesAfter >= 0 and sharesAfter == sharesBefore - msg.amount
+      // ** Specification invariants **
 
     pure def swap(state: State, msg: SwapMsg) : Result = {
       ok(state)
@@ -147,7 +168,15 @@ module Dex {
       val minAmount = computeAmountFromPrice(usedAmount, msg.limitPrice)
       outAmount >= minAmount and
       // Invariant Swap.1b
-      inAmount >= usedAmount
+      inAmount >= usedAmount and
+      // Invariant LP.3
+      resultIteration.keys().forall(id => val poolBefore = before.pools.get(id)
+                                          val poolAfter = after.pools.get(id) 
+                                          val price = priceFromTick(-1*id.tick)
+                                          val poolValueBefore = poolBefore.reserves._1 + poolBefore.reserves._2.fromInt().mul(price).truncate
+                                          val poolValueAfter = poolAfter.reserves._1 + poolAfter.reserves._2.fromInt().mul(price).truncate
+                                          val reservesChanges = resultIteration.get(id)
+                                          reservesChanges._1 > 0 or reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore)
 
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
