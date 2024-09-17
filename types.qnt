@@ -49,7 +49,7 @@ module types {
             receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
-            exitLimitPrice: Dec
+            limitPrice: Dec
         }
 
     type PlaceLimitOrderMsg = {

@@ -22,11 +22,13 @@ module Dex {
 
     pure def error(state: State, error: str): Result = {state: state, result: error}
 
+    pure def computeAmountFromPrice(usedAmount: int, price: Dec): int
+
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = amounts
 
     pure def computeSharesDeposit(existingShares: int, amounts: (int, int)): (int, int) = amounts
 
-    pure def computeAmountsWithdraw(reserves: (int, int), shares: int): (int, int) = reserves
+    pure def computeAmountsWithdraw(reserves: (int, int), totalShares: int, shares: int): (int, int) = reserves
 
     pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
@@ -38,26 +40,32 @@ module Dex {
     }
 
     pure def postDeposit(before: State, after: State, msg: DepositMsg): bool = 
+      // We could guarantee by design that the token pair is submitted in order
       val pair =  orderTokenPair(msg.tokenPair)
       val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
       val poolId = getPoolId(pair, msg.tick, msg.fee)
-      // pool exists
+      // ** State changes validation **
+      // Pool exists
       after.pools.has(poolId) and 
-      val poolBefore = before.pools.get(poolId)
-      val poolAfter = after.pools.get(poolId)
-      val inAmounts = computeAmountsDeposit(before.reserves, amounts)
-      val outShares = computeSharesDeposit(before.shares, inAmounts)
-      // reserves are updated
-      poolAfter.reserves._1 == poolBefore.reserves._1 + inAmounts._1 and 
-      poolAfter.reserves._2 == poolBefore.reserves._2 + inAmounts._2 and
-      // coins are transferred
-      after.coins.get(msg.receiver).get(pair._1) >= 0 and after.coins.get(msg.receiver).get(pair._2) >= 0 and
-      after.coins.get(msg.receiver).get(pair._1) == before.coins.get(msg.receiver).get(pair._1) - inAmounts._1 and
-      after.coins.get(msg.receiver).get(pair._2) == before.coins.get(msg.receiver).get(pair._2) - inAmounts._2 and
-      // shares are minted
+      val reservesBefore = if (before.pools.has(poolId)) (0,0) else before.pools.get(poolId).reserves
+      val reservesAfter = after.pools.get(poolId).reserves
+      val sharesBefore = if (before.pools.has(poolId)) 0 else before.pools.get(poolId).shares
+      val sharesAfter = after.pools.get(poolId).shares
+       //@audit-info Why one may not be allowed to deposit the full amount? ratios?
+      val inAmounts = computeAmountsDeposit(reservesBefore, amounts)
+      val outShares = computeSharesDeposit(sharesBefore.shares, inAmounts)
+      // Reserves are updated
+      reservesAfter._1 == reservesBefore._1 + inAmounts._1 and 
+      reservesAfter._2 == reservesBefore._2 + inAmounts._2 and
+      // Coins are transferred
+      after.coins.get(msg.creator).get(pair._1) >= 0 and after.coins.get(msg.creator).get(pair._2) >= 0 and
+      after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) - inAmounts._1 and
+      after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) - inAmounts._2 and
+      // Shares are minted
       after.sharesPrime.get(msg.receiver).has(poolId) and
-      after.sharesPrime.get(msg.receiver).get(poolId) == before.sharesPrime.get(msg.receiver).get(poolId) + outShares and
-      poolAfter.shares == poolBefore.shares + outShares
+      after.sharesPrime.get(msg.receiver).get(poolId) == if (before.sharesPrime.get(msg.receiver).has(poolId)) before.sharesPrime.get(msg.receiver).get(poolId) + outShares
+                                                         else outShares and
+      sharesAfter == sharesBefore + outShares
 
     pure def withdraw(state: State, msg: WithdrawMsg) : Result = {
       ok(state)
@@ -66,28 +74,38 @@ module Dex {
     pure def postWithdraw(before: State, after: State, msg: DepositMsg): bool = 
       val pair =  orderTokenPair(msg.tokenPair)
       val poolId = getPoolId(pair, msg.tick, msg.fee)
-      val poolBefore = before.pools.get(poolId)
-      val poolAfter = after.pools.get(poolId)
-      val outAmounts = computeAmountsWithdraw(before.reserves, msg.amount)
-      // reserves are updated
-      poolAfter.reserves._1 == poolBefore.reserves._1 - outAmounts._1 and poolAfter.reserves._1 >= 0 and
-      poolAfter.reserves._2 == poolBefore.reserves._2 - outAmounts._2 and poolAfter.reserves._2 >= 0 and
-      // coins are transferred
+      // We assume that we do not remove empty pools
+      // We do not check that poolBefore exists, as it is a precondition and not a postcondition
+      val reservesBefore = before.pools.get(poolId).reserves
+      val reservesAfter = after.pools.get(poolId).reserves
+      val sharesBefore = before.pools.get(poolId).shares
+      val sharesAfter = after.pools.get(poolId).shares
+      val outAmounts = computeAmountsWithdraw(reservesBefore, sharesBefore, msg.amount)
+      // ** State changes validation **
+      // Reserves are updated
+      reservesAfter._1 == reservesBefore._1 - outAmounts._1 and reservesAfter._1 >= 0 and
+      reservesAfter._2 == reservesBefore._2 - outAmounts._2 and reservesAfter._2 >= 0 and
+      // Coins are transferred
       after.coins.get(msg.receiver).get(pair._1) == before.coins.get(msg.receiver).get(pair._1) + outAmounts._1 and
       after.coins.get(msg.receiver).get(pair._2) == before.coins.get(msg.receiver).get(pair._2) + outAmounts._2 and
-      // shares are burned
-      not(after.sharesPrime.get(msg.creator).has(poolId)) implies (before.sharesPrime.get(msg.creator).has(poolId) and
-                                                                   before.sharesPrime.has(msg.creator).has(poolId) == msg.amount) and
-      after.sharesPrime.get(msg.creator).has(poolId) implies after.sharesPrime.get(msg.creator).has(poolId) == before.sharesPrime.get(msg.creator).has(poolId) - msg.amount and
-      poolAfter.shares >= 0 and poolAfter.shares == poolBefore.shares - msg.amount
+      // Shares are burned
+      // We assume that we do not remove empty shares
+      after.sharesPrime.get(msg.creator).get(poolId) >= 0 and
+      after.sharesPrime.get(msg.creator).get(poolId) == before.sharesPrime.get(msg.creator).has(poolId) - msg.amount and
+      sharesAfter >= 0 and sharesAfter == sharesBefore - msg.amount
 
     pure def swap(state: State, msg: SwapMsg) : Result = {
       ok(state)
     }
 
     /* pure def minPricePool(ids: Set[PoolId], AtoB: bool): PoolId = {
+      ids.fold(MAX_PICE_PRICE, (acc, id) => val price = computePrice(id.tick, id.fee)
+                                            take the minimum)
       ids.chooseSome
     }
+
+    computePrice(): int = val realTick = if (AtoB) tick + fee else - tick - fee
+                          fromTickToPrice(realTick)
 
     pure def computeTick(tick: TickIndex, AtoB: bool, fee: Fee): TickIndex = {
       tick
@@ -110,20 +128,28 @@ module Dex {
            poolAfter.reserves._1 == poolBefore.reserves._2 - amounts._2
 
     pure def postSwap(before: State, after: State, msg: SwapMsg): bool =
-      // assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
+      // Assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
       val resultIteration = liquidityIteration(pair, msg.token, before.pools, inAmount)
-      val outAmount = if (pair._1 == msg.token) resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._1)
-                      else resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._2)
-      // coins are transferred
-      after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - inAmount and
+      val outAmount = if (pair._1 == msg.token) resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._2)
+                      else resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._1)
+      val usedAmount = if (pair._1 == msg.token) resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._1)
+                       else resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._2)
+      // ** State changes validation **
+      // Coins are transferred
+      after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount and
       after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount and
-      // reserves are updated
+      // Reserves are updated
       resultIteration.keys().forall(id => val poolBefore = before.pools.get(id)
                                           val poolAfter = after.pools.get(id)
-                                          postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.get(id)))
-        
+                                          postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.get(id))) and
+      // ** Specification invariants **
+      // Invariant Swap.1a
+      val minAmount = computeAmountFromPrice(usedAmount, msg.limitPrice)
+      outAmount >= minAmount and
+      // Invariant Swap.1b
+      inAmount >= usedAmount
 
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
