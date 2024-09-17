@@ -14,174 +14,47 @@ module Dex {
     import consts.* from "consts"
     import utils.* from "utils"
     
+    // CH: STATE VARIABLES
     var state: State  
-    var postViolation: bool
+    var postconditionOK: bool
 
-    // this function returns:
-    //  - a mapping from poolIds to amounts that should be swapped with this pool
-    //  - a mapping from trancheKeys to amounts that should be filled with this tranche
-    //  - an integer saying how much of the order amount is still remaining
-    pure def computeMakerOrderMatches(state: State, msg: PlaceLimitOrderMsg) : (PoolId->int, TrancheKey-> int, int) = 
-        (Map(), Map(), -1)
+    // CH: STATE MACHINE
+    action step: bool = any {
+        placeLimitOrderAction,
+        cancelLimitOrderAction,
+        withdrawLimitOrderAction,
+        advanceTimeAction
+    }
 
-    pure def swap(state: State, poolId: PoolId, amount: int) : State = state
+    // ACTIONS
 
-    pure def fillTranche(state: State, trancheKey: TrancheKey, amount: int) : State = state
-
-    pure def createNewTranche(state: State, msg: PlaceLimitOrderMsg, amount: int) : State = state
-
-    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
-        // TODO: this should be separated into the case when the swap happens, and when the maker order is placed
-        // Depending on the kind of order, a part should be immediately swapped and a part may still be placed as a maker order        
-        
+    //    CH: PLACING A LIMIT ORDER
+    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =        
+        // @audit-info Quint : It would be great to have the ability to unpack a tuple into variables immediately        
         val fulfilledOrderInfo = computeMakerOrderMatches(state, msg)
         val poolsToSwap = fulfilledOrderInfo._1
-        val tranchesToFill = fulfilledOrderInfo._2
+        val tranchesToTrade = fulfilledOrderInfo._2
         val remainingAmount = fulfilledOrderInfo._3
-        val stateAfterSwaps = poolsToSwap.keys().fold(
+        // End of Quint comment
+
+        // iterated swaps over relevant pools
+        val stateAfterPoolSwaps = poolsToSwap.keys().fold(
             state,
-            (state, poolId) => swap(state, poolId, poolsToSwap.get(poolId))
+            (state, poolId) => poolSwap(state, poolId, poolsToSwap.get(poolId))
         )
 
-        val stateAfterFills = tranchesToFill.keys().fold(
-            stateAfterSwaps,
-            (state, trancheKey) => fillTranche(state, trancheKey, tranchesToFill.get(trancheKey))
+        // iterated trades over relevant tranches
+        val stateAfterTrancheTrades = tranchesToTrade.keys().fold(
+            stateAfterPoolSwaps,
+            (state, trancheKey) => trancheTrade(state, trancheKey, tranchesToTrade.get(trancheKey))
         )
 
         // if there is still some amount left, we need to create a new tranche
-        createNewTranche(stateAfterFills, msg, remainingAmount)
+        createNewTranche(stateAfterTrancheTrades, msg, remainingAmount)
 
-    pure def computeWithdrawShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
-        // @audit-issue Should this be truncate? Rounding discussion
-        truncate(
-            mul(
-                percentFilled,
-                userNonWithdrawnTrancheShare
-            )
-        )
-
-    pure def computeCancelAmountMakerToken(percentUnfilled: Dec, userTotalTrancheShare: Dec, totalMaker: int): int =
-        // @audit-issue Already here we are running into rounding problems. Would be great to get the description on rounding
-        // that we discussed in one of the previous meetings
-        truncate(
-            mulInt(
-                mul(
-                    percentUnfilled,
-                    userTotalTrancheShare
-                ),
-                totalMaker
-            )
-        )
-    
-    pure def computeWithdrawAmountTakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec, totalTaker: int): int = 
-        truncate(
-            mulInt(
-                mul(
-                    percentFilled,
-                    userNonWithdrawnTrancheShare
-                ),
-                totalTaker
-            )
-                )
-    
-
-    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =        
-        val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
-        val users_tranches_before = before.tranches_shares.get(msg.creator).keys()
-        val users_tranches_after = after.tranches_shares.get(msg.creator).keys()
-        and {
-            // there is at most one removed tranche from the set of users' tranches
-            // and this is exactly the tranche that the user requested to be cancelled
-            val removedTranches = users_tranches_before.exclude(users_tranches_after)
-            and{
-                size(removedTranches) <= 1,
-                removedTranches.forall(
-                    trancheKey => trancheKey == msg.trancheKey
-                    )
-            },
-            
-            // user received their fair amount of maker tokens back            
-            // this calculation corresponds to the point 2a from the spec document
-            // I am wondering if it is the same as `percentUnfilled * totalAmountOfUserShares` ==> pending confirmation from the dev team
-            val percentUnfilled = calculatePercentUnfilled(before.tranches.get(msg.trancheKey))
-            val userTotalTrancheShare = calculateUserTotalTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))                    
-            // @audit-info I am using "MakerToken" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
-            val cancelAmountOutMakerToken =                 
-                computeCancelAmountMakerToken(percentUnfilled, userTotalTrancheShare, tranche_before.totalMaker)
-            and{
-                // the user's balance has increased for what was cancelled
-                cancelAmountOutMakerToken == 
-                after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
-                before.coins.get(msg.creator).get(tranche_before.makerDenomination),
-                // the totalMaker has decreased for what was cancelled
-                cancelAmountOutMakerToken ==
-                before.tranches.get(msg.trancheKey).totalMaker -
-                after.tranches.get(msg.trancheKey).totalMaker
-
-            },
-            
-            // This part corresponds to the point 2b from the spec document
-            val percentFilled = calculatePercentFilled(before.tranches.get(msg.trancheKey))     
-            val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))       
-            val cancelAmountOutTakerToken = 
-                // we are using "computeWITHDRAW..." because when cancelling, the user is also withdrawing their unwithdrawn share
-                computeWithdrawAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche_before.totalTaker)
-
-            and{
-                // the user's taker token balance has increased for what was withdrawn when cancelling
-                cancelAmountOutTakerToken == 
-                    after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
-                    before.coins.get(msg.creator).get(tranche_before.takerDenomination),
-                // the totalTaker has decreased for what was cancelled
-                cancelAmountOutTakerToken ==
-                    before.tranches.get(msg.trancheKey).totalTaker -
-                    after.tranches.get(msg.trancheKey).totalTaker
-            },
-            
-            // make sure that the user's withdrawn shares are updated correctly                        
-            before.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesOwned 
-            ==
-            after.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn                           
-        }
-
-
-
-    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
-        // TODO: unfinished
-        state 
-
-    pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
-        val withdrawnShares: int = computeWithdrawShares(
-            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
-            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranches_shares.get(msg.creator))
-        )
-        val withdrawnAmountTakerToken: int = computeWithdrawAmountTakerToken(
-            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
-            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranches_shares.get(msg.creator)),
-            before.tranches.get(msg.trancheKey).totalTaker
-        )
-        and {
-            // the user's taker balance has increased for what was withdrawn
-            withdrawnAmountTakerToken == 
-                after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
-                before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
-            // the totalTaker has decreased for what was withdrawn
-            withdrawnAmountTakerToken ==
-                before.tranches.get(msg.trancheKey).totalTaker -
-                after.tranches.get(msg.trancheKey).totalTaker,
-            // the user's shares withdrawn have increased appropriately
-            withdrawnShares == 
-                after.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
-                before.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn
-            
-        }
 
     
-    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
-        // TODO: unfinished
-        state 
-
-    pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
+pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
         and{
             placeLimitOrderMatchedPostcondition(before, msg, after),
             placeLimitMakerOrderPostcondition(before, msg, after)
@@ -256,26 +129,43 @@ module Dex {
 
         all {
             state' = res,
-            postViolation' = placeLimitOrderPostcondition(state, limitOrderMsg, res)
-        }
-
-
-
-    action cancelLimitOrderAction: bool =
-        nondet creator = oneOf(state.tranches_shares.keys())
-        nondet trancheKey = oneOf(state.tranches_shares.get(creator).keys())
-        val cancelLimitOrderMsg = {
-            creator: creator,
-            trancheKey: trancheKey
-        }
-        val res = cancelLimitOrder(state, cancelLimitOrderMsg)
-        all{
-            state' = res,
-            postViolation' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res)
+            postconditionOK' = placeLimitOrderPostcondition(state, limitOrderMsg, res)
+        }    
+    
+    //   CH: WITHDRAWING PROCEEDS OF A TRANCHE
+    
+    pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
+        val withdrawnShares: int = computeWithdrawShares(
+            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
+            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranches_shares.get(msg.creator))
+        )
+        val withdrawnAmountTakerToken: int = computeWithdrawAmountTakerToken(
+            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
+            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranches_shares.get(msg.creator)),
+            before.tranches.get(msg.trancheKey).totalTaker
+        )
+        and {
+            // the user's taker balance has increased for what was withdrawn
+            withdrawnAmountTakerToken == 
+                after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
+                before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
+            // the totalTaker has decreased for what was withdrawn
+            withdrawnAmountTakerToken ==
+                before.tranches.get(msg.trancheKey).totalTaker -
+                after.tranches.get(msg.trancheKey).totalTaker,
+            // the user's shares withdrawn have increased appropriately
+            withdrawnShares == 
+                after.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
+                before.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn
+            
         }
 
     
-    action withdrawLimitOrderAction: bool = 
+    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
+        // TODO: unfinished
+        state 
+    
+action withdrawLimitOrderAction: bool = 
         nondet creator = oneOf(state.tranches_shares.keys())
         nondet trancheKey = oneOf(state.tranches_shares.get(creator).keys())
         val withdrawLimitOrderMsg = {
@@ -292,9 +182,93 @@ module Dex {
             // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
             require(not(state.tranches.get(trancheKey).isFresh)),
             state' = res,
-            postViolation' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res)
+            postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res)
         }
     
+    
+    //    CH: CANCELLING A LIMIT ORDER
+
+    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =        
+        val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
+        val users_tranches_before = before.tranches_shares.get(msg.creator).keys()
+        val users_tranches_after = after.tranches_shares.get(msg.creator).keys()
+        and {
+            // there is at most one removed tranche from the set of users' tranches
+            // and this is exactly the tranche that the user requested to be cancelled
+            val removedTranches = users_tranches_before.exclude(users_tranches_after)
+            and{
+                size(removedTranches) <= 1,
+                removedTranches.forall(
+                    trancheKey => trancheKey == msg.trancheKey
+                    )
+            },
+            
+            // user received their fair amount of maker tokens back            
+            // this calculation corresponds to the point 2a from the spec document
+            // I am wondering if it is the same as `percentUnfilled * totalAmountOfUserShares` ==> pending confirmation from the dev team
+            val percentUnfilled = calculatePercentUnfilled(before.tranches.get(msg.trancheKey))
+            val userTotalTrancheShare = calculateUserTotalTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))                    
+            // @audit-info I am using "MakerToken" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
+            val cancelAmountOutMakerToken =                 
+                computeCancelAmountMakerToken(percentUnfilled, userTotalTrancheShare, tranche_before.totalMaker)
+            and{
+                // the user's balance has increased for what was cancelled
+                cancelAmountOutMakerToken == 
+                after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
+                before.coins.get(msg.creator).get(tranche_before.makerDenomination),
+                // the totalMaker has decreased for what was cancelled
+                cancelAmountOutMakerToken ==
+                before.tranches.get(msg.trancheKey).totalMaker -
+                after.tranches.get(msg.trancheKey).totalMaker
+
+            },
+            
+            // This part corresponds to the point 2b from the spec document
+            val percentFilled = calculatePercentFilled(before.tranches.get(msg.trancheKey))     
+            val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche_before, before.tranches_shares.get(msg.creator))       
+            val cancelAmountOutTakerToken = 
+                // we are using "computeWITHDRAW..." because when cancelling, the user is also withdrawing their unwithdrawn share
+                computeWithdrawAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche_before.totalTaker)
+
+            and{
+                // the user's taker token balance has increased for what was withdrawn when cancelling
+                cancelAmountOutTakerToken == 
+                    after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
+                    before.coins.get(msg.creator).get(tranche_before.takerDenomination),
+                // the totalTaker has decreased for what was cancelled
+                cancelAmountOutTakerToken ==
+                    before.tranches.get(msg.trancheKey).totalTaker -
+                    after.tranches.get(msg.trancheKey).totalTaker
+            },
+            
+            // make sure that the user's withdrawn shares are updated correctly                        
+            before.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesOwned 
+            ==
+            after.tranches_shares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn                           
+        }
+
+
+
+    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
+        // TODO: unfinished
+        state 
+
+    action cancelLimitOrderAction: bool =
+        nondet creator = oneOf(state.tranches_shares.keys())
+        nondet trancheKey = oneOf(state.tranches_shares.get(creator).keys())
+        val cancelLimitOrderMsg = {
+            creator: creator,
+            trancheKey: trancheKey
+        }
+        val res = cancelLimitOrder(state, cancelLimitOrderMsg)
+        all{
+            state' = res,
+            postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res)
+        }
+
+    
+    
+    //     CH: ADVANCING TIME
     action advanceSingleBlockAction: bool =
         state' = {
             blockNumber: state.blockNumber + 1,
@@ -316,21 +290,12 @@ module Dex {
                 advanceSingleBlockAction,
                 advanceMultipleBlocksAction
             },
-            postViolation' = postViolation
+            postconditionOK' = postconditionOK
         }        
         
         
 
-    action step: bool = any {
-        placeLimitOrderAction,
-
-        cancelLimitOrderAction,
-
-        withdrawLimitOrderAction,
-
-        advanceTimeAction
-
-    }
+    
 
 
 

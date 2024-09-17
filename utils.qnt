@@ -53,6 +53,56 @@ module utils {
         // TODO: NOT-IMPLEMENTED
         -1
     
-    }
+    // TRADE-RELATED FUNCTIONS
+    // this function returns:
+    //  - a mapping from poolIds to amounts that should be swapped with this pool
+    //  - a mapping from trancheKeys to amounts that should be filled with this tranche
+    //  - an integer saying how much of the order amount is still remaining
+    pure def computeMakerOrderMatches(state: State, msg: PlaceLimitOrderMsg) : (PoolId->int, TrancheKey-> int, int) = 
+        (Map(), Map(), -1)
+
+    pure def poolSwap(state: State, poolId: PoolId, amount: int) : State = state
+
+    pure def trancheTrade(state: State, trancheKey: TrancheKey, amount: int) : State = state
+
+    pure def createNewTranche(state: State, msg: PlaceLimitOrderMsg, amount: int) : State = state
+
+
+    // WITHDRAW RELATED FUNCTIONS
+    pure def computeWithdrawShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
+        // @audit-issue Should this be truncate? Rounding discussion
+        truncate(
+            mul(
+                percentFilled,
+                userNonWithdrawnTrancheShare
+            )
+        )
+
+    pure def computeWithdrawAmountTakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec, totalTaker: int): int = 
+        truncate(
+            mulInt(
+                mul(
+                    percentFilled,
+                    userNonWithdrawnTrancheShare
+                ),
+                totalTaker
+            )
+        )
+
+    // CANCEL RELATED FUNCTIONS
+    pure def computeCancelAmountMakerToken(percentUnfilled: Dec, userTotalTrancheShare: Dec, totalMaker: int): int =
+        // @audit-issue Already here we are running into rounding problems. Would be great to get the description on rounding
+        // that we discussed in one of the previous meetings
+        truncate(
+            mulInt(
+                mul(
+                    percentUnfilled,
+                    userTotalTrancheShare
+                ),
+                totalMaker
+            )
+        )
+
+}
 
     
