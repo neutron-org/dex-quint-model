@@ -28,7 +28,7 @@ module Dex {
 
     pure def computeAmountsWithdraw(reserves: (int, int), shares: int): (int, int) = reserves
 
-    pure def getPoolId(tokens: (Token, Token), tick: int, fee: int): PoolId = 
+    pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
 
     pure def orderTokenPair(pair: (Token, Token)): (Token, Token) = pair
@@ -81,6 +81,50 @@ module Dex {
       after.sharesPrime.get(msg.creator).has(poolId) implies after.sharesPrime.get(msg.creator).has(poolId) == before.sharesPrime.get(msg.creator).has(poolId) - msg.amount and
       poolAfter.shares >= 0 and poolAfter.shares == poolBefore.shares - msg.amount
 
+    pure def swap(state: State, msg: SwapMsg) : Result = {
+      ok(state)
+    }
+
+    /* pure def minPricePool(ids: Set[PoolId], AtoB: bool): PoolId = {
+      ids.chooseSome
+    }
+
+    pure def computeTick(tick: TickIndex, AtoB: bool, fee: Fee): TickIndex = {
+      tick
+    } */
+
+    pure def liquidityIteration(pair: (Token, Token), token: Token, pools: PoolId -> Pool, amount: int): PoolId -> (int, int) = Map()
+      /* val AtoB = pair._1 == token
+      val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
+      relevantPools.fold({remainingPools: relevantPools, inAmount: amount, outAmount: 0, result: relevantPools.mapBy(pool => (0, 0))}, (acc, id) =>
+        val min =  minPricePool(acc.remainingPools, AtoB)
+        val tick = computeTick(min.tick, AtoB, min.fee)
+        val price = priceFromTick(tick)
+        val outAmount = 1
+        {remainingPools: acc.remainingPools, inAmount: 0, outAmount: 0, result: acc.result}).result */
+
+    pure def postconditionSwapPool(poolBefore: State, poolAfter: State, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
+      if (poolPair._1 == msgPair._1) poolAfter.reserves._1 == poolBefore.reserves._1 - amounts._1 and
+                                     poolAfter.reserves._2 == poolBefore.reserves._2 + amounts._2      
+      else poolAfter.reserves._1 == poolBefore.reserves._1 + amounts._1 and 
+           poolAfter.reserves._1 == poolBefore.reserves._2 - amounts._2
+
+    pure def postSwap(before: State, after: State, msg: SwapMsg): bool =
+      // assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
+      val inAmount = msg.amount
+      val pair =  orderTokenPair(msg.tokenPair)
+      val resultIteration = liquidityIteration(pair, msg.token, before.pools, inAmount)
+      val outAmount = if (pair._1 == msg.token) resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._1)
+                      else resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._2)
+      // coins are transferred
+      after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - inAmount and
+      after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount and
+      // reserves are updated
+      resultIteration.keys().forall(id => val poolBefore = before.pools.get(id)
+                                          val poolAfter = after.pools.get(id)
+                                          postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.get(id)))
+        
+
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =
         val normalizedCoinAndTick = normalizeCoinAndTick(msg.tokenPair, msg.tick)        
         val tick1to0 = normalizedCoinAndTick._3
@@ -129,6 +173,15 @@ module Dex {
         require(result.error=="nil"),
         state' = result.state,
         postViolation' = postWithdraw(state, result.state, msg)
+      }
+    }
+
+    action actionSwap(msg: SwapMsg): bool = {
+      val result = swap(state, msg)
+      all {
+        require(result.error=="nil"),
+        state' = result.state,
+        postViolation' = postSwap(state, result.state, msg)
       }
     }
 

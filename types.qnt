@@ -5,6 +5,7 @@ module types {
     type Addr = str
     type TokenPair = (Token, Token)
     type TickIndex = int
+    type Fee = int
     // a tranche index is there for multiple tranches of the same tick
     type TrancheIndex = int
     // each trancheId is a tuple of ((tokenA, tokenB), tick, trancheIndex)
@@ -31,7 +32,7 @@ module types {
             tokenPair: (Token, Token),
             amountPair: (int, int),
             tick: TickIndex,
-            fee: int,
+            fee: Fee,
         }
 
     type WithdrawMsg = {
@@ -40,7 +41,15 @@ module types {
             tokenPair: (Token, Token),
             amount: int,
             tick: TickIndex,
-            fee: int,
+            fee: Fee,
+        }
+
+    type SwapMsg = {
+            creator: Addr,
+            receiver: Addr,
+            tokenPair: (Token, Token),
+            amount: int,
+            exitLimitPrice: Dec
         }
 
     type PlaceLimitOrderMsg = {
@@ -88,8 +97,8 @@ module types {
 
     type PoolId = {
         tokenPair: (Token, Token),
-        tick: int,
-        fee: int
+        tick: TickIndex,
+        fee: Fee
     }
 
     type Pool = {
@@ -107,8 +116,6 @@ module types {
         tranches: TrancheKey -> Tranche,
         // balances of all the users in the system
         coins: Coins,
-        // @audit-info Can we consolidate both?
-        // @audit-info Can we get rid of multiple users? It is anyway sequential and I am not sure it is worth
         shares: Shares,
         sharesPrime: Addr -> PoolId -> int,
         pools: PoolId -> Pool,
@@ -119,8 +126,9 @@ module types {
         // @audit-info Would it make sense to separate the state into "actual info" and
         // helper data structures (like the OrderedLists below)?        
         orderedTicks: TokenPair -> OrderedList[TickIndex],
-        orderedTranchesPerTick: (TokenPair, TickIndex) -> OrderedList[TrancheKey]
+        orderedTranchesPerTick: (TokenPair, TickIndex) -> OrderedList[TrancheKey],
 
+        orderedTicksPrime: TokenPair -> Set[(TickIndex, Fee)],
 
         // ... and then we'll need data structures for pools and deposits
     }
