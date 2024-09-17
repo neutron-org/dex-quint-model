@@ -15,6 +15,7 @@ module Dex {
     import utils.* from "utils"
     
     var state: State  
+    var postViolation: bool
 
     // this function returns:
     //  - a mapping from poolIds to amounts that should be swapped with this pool
@@ -178,7 +179,13 @@ module Dex {
     
     pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
         // TODO: unfinished
-        state   
+        state 
+
+    pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
+        and{
+            placeLimitOrderMatchedPostcondition(before, msg, after),
+            placeLimitMakerOrderPostcondition(before, msg, after)
+        }  
 
     // 
     pure def placeLimitOrderMatchedPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
@@ -187,22 +194,21 @@ module Dex {
     // This is a postcondition only for the part of placing an order that is a maker order, creating a new tranche
     pure def placeLimitMakerOrderPostcondition(
         before: State, 
-        tokenPair: TokenPair,        
-        tick: TickIndex,
-        amountIn: int,
-        creator: Addr,
+        msg: PlaceLimitOrderMsg,
         after: State) : bool =
 
         
-        val trancheIndex = calculateTrancheIndex(tokenPair, tick, before.tranches.keys())
-        val trancheKey = (tokenPair, tick, trancheIndex)
+        val trancheIndex = calculateTrancheIndex(msg.tokenPair, msg.tick, before.tranches.keys())
+        val trancheKey = (msg.tokenPair, msg.tick, trancheIndex)
+        val amountIn = computeMakerOrderMatches(before, msg)._3
         and {
             // the tranche key exists in the after state
             after.tranches.keys().contains(trancheKey),
         
             // The share account per user and the tranche is there, and its values are updated correctly
-            val userAccountBefore = before.tranches_shares.get(creator)
-            val userAccounotAfter = after.tranches_shares.get(creator)
+            val userAccountBefore = before.tranches_shares.get(msg.creator)
+            val userAccounotAfter = after.tranches_shares.get(msg.creator)
+            
             and {
                 userAccounotAfter.keys().contains(trancheKey),
                 // the sharesOwned is increased: the split is depending on whether the user had already something in the
@@ -230,7 +236,7 @@ module Dex {
         
         
 
-    action placeLimitOrderAction: bool = 
+    action placeLimitOrderAction: bool =
         nondet c = oneOf(CREATORS)
         nondet o = oneOf(ORDER_TYPES)
         nondet t = oneOf(TICKS)
@@ -246,7 +252,13 @@ module Dex {
             tokenPair: token_pair,
             amountIn: amount
         }
-        state' = placeLimitOrder(state, limitOrderMsg)
+        val res = placeLimitOrder(state, limitOrderMsg)
+
+        all {
+            state' = res,
+            postViolation' = placeLimitOrderPostcondition(state, limitOrderMsg, res)
+        }
+
 
 
     action cancelLimitOrderAction: bool =
@@ -256,7 +268,11 @@ module Dex {
             creator: creator,
             trancheKey: trancheKey
         }
-        state' = cancelLimitOrder(state, cancelLimitOrderMsg)
+        val res = cancelLimitOrder(state, cancelLimitOrderMsg)
+        all{
+            state' = res,
+            postViolation' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res)
+        }
 
     
     action withdrawLimitOrderAction: bool = 
@@ -266,15 +282,17 @@ module Dex {
             creator: creator,
             trancheKey: trancheKey
         }
+        val res = withdrawLimitOrder(state, withdrawLimitOrderMsg)
         all {
             require(state.tranches.keys().contains(trancheKey)),
             // we are not allowing  withdrawing from fresh tranches (there was no trading)
             // @audit-info Should we handle the error at this level or should we let individual functions handle it?
             // This way is cleaner. The problem is that the simulation will not try at all then those cases where a withdraw on a non-fresh
             // tranche is attempted.
-            // maybe it make sense to use require here at places where we can be confident that the code will enforce those assumptions
+            // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
             require(not(state.tranches.get(trancheKey).isFresh)),
-            state' = withdrawLimitOrder(state, withdrawLimitOrderMsg)
+            state' = res,
+            postViolation' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res)
         }
     
     action advanceSingleBlockAction: bool =
@@ -291,11 +309,14 @@ module Dex {
         }
 
     action advanceTimeAction: bool = 
-        // separating the two (even though they could be combined) to
-        // be able to explicitly turn off one of them
-        any {
-            advanceSingleBlockAction,
-            advanceMultipleBlocksAction
+        all{
+            // separating the two (even though they could be combined) to
+            // be able to explicitly turn off one of them
+            any {
+                advanceSingleBlockAction,
+                advanceMultipleBlocksAction
+            },
+            postViolation' = postViolation
         }        
         
         
