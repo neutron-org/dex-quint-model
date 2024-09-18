@@ -5,16 +5,12 @@ module types {
     type Addr = str
     type TokenPair = (Token, Token)
     type TickIndex = int
+    type Fee = int
     // a tranche index is there for multiple tranches of the same tick
     type TrancheIndex = int
     // each trancheId is a tuple of ((tokenA, tokenB), tick, trancheIndex)
     type TrancheKey = (TokenPair, TickIndex, TrancheIndex)
 
-    type PoolId = {
-        tokenPair: (Token, Token),
-        tick: int,
-        fee: int
-    }
     
     
     type LimitOrderType = 
@@ -25,6 +21,39 @@ module types {
         | JustInTime
 
     // MESSAGES
+
+    type Message = 
+      DepositSubType(DepositMsg)
+    | PlaceLimitOrderSubType(PlaceLimitOrderMsg)
+    | CancelLimitOrderSubType(CancelLimitOrderMsg)
+    | WithdrawLimitOrderSubType(WithdrawLimitOrderMsg)
+
+    //@audit-info : Simplified to only allow deposit in a single position
+    type DepositMsg = {
+            creator: Addr,
+            receiver: Addr,
+            tokenPair: (Token, Token),
+            amountPair: (int, int),
+            tick: TickIndex,
+            fee: Fee,
+        }
+
+    type WithdrawPoolMsg = {
+            creator: Addr,
+            receiver: Addr,
+            tokenPair: (Token, Token),
+            amount: int,
+            tick: TickIndex,
+            fee: Fee,
+        }
+
+    type SwapMsg = {
+            creator: Addr,
+            receiver: Addr,
+            tokenPair: (Token, Token),
+            amount: int,
+            limitPrice: Dec
+        }
 
     type PlaceLimitOrderMsg = {
             creator: Addr,
@@ -81,6 +110,18 @@ module types {
             takerDenomination: Token
         }
 
+    
+    type PoolId = {
+        tokenPair: (Token, Token),
+        tick: TickIndex,
+        fee: Fee
+    }
+
+    type Pool = {
+        reserves: (int, int),
+        shares: int
+    }
+
     // @audit-issue We must make sure that `Shares` always contains all the Addr (Addr is not removed and is initialized)
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> {
@@ -95,14 +136,18 @@ module types {
         tranches: TrancheKey -> Tranche,
         // balances of all the users in the system
         coins: Coins,
-        tranches_shares: Shares,
+        tranchesShares: Shares,
         // we will model time by blocks (integer value). 
         // In the code, it is done through BlockTime. Departing from that. 
         // @audit-info could that cause any issue down the line?
         blockNumber: BlockTime,
+        poolShares: Addr -> PoolId -> int,
+        pools: PoolId -> Pool,
 
         // In the implementation, these are connected to the block numbers. 
         lastTrancheIndex: int
+
     }
 
+    type Result = {state: State, error: str}
 }

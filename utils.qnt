@@ -5,8 +5,7 @@ module utils {
     import types.* from "types"
     import consts.* from "consts"
 
-    // This is a readability helper function: to put "require" around boolean conditions
-    pure def require(cond: bool): bool = cond
+    
 
     // TRANCHE related functions
     pure def calculatePercentFilled(t: Tranche) : Dec =
@@ -26,9 +25,18 @@ module utils {
 
     // -------
     
+    pure def min(a,b) = if(a<b) a else b
+
     pure def priceFromTick(tick: int) : Dec =
         BASE_PRICE.pow(-tick)
+    
+    pure def ok(state: State): Result = {state: state, error: "nil"}
 
+    pure def error(state: State, error: str): Result = {state: state, error: error}
+    
+    pure def computeAmountFromPrice(usedAmount: int, price: Dec): int = 0
+
+    
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int) : bool =
         // @audit-info What is the best practice to encode assumptions on pure functions,
@@ -37,7 +45,9 @@ module utils {
         token_num_values.get(t1) < token_num_values.get(t2)
 
 
-    
+    pure def orderTokenPair(pair: (Token, Token)): (Token, Token) =
+      if (tokenLT(pair._1, pair._2, TOKEN_NUM_VALUES)) pair else (pair._2, pair._1)
+
     pure def normalizeCoinAndTick(tokenPair: (Token, Token), tick: int) : ((Token, Token), int) =
         val tokenIn = tokenPair._1
         val tokenOut = tokenPair._2
@@ -67,9 +77,29 @@ module utils {
 
     pure def createNewTranche(state: State, msg: PlaceLimitOrderMsg, amount: int) : State = state
 
+    // DEPOSIT RELATED FUNCTIONS
+    // @audit-info there's a Quint error I cannot resolve
+    pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
+      val inAmount0 = if (reserves._2 > 0)
+                        min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())
+                      else 0 //amounts._1
+      val inAmount1 = if (reserves._1 > 0)
+                        min(amounts._2, amounts._1.fromInt().mul(reserves._2.fromInt()).div(reserves._1.fromInt()).truncate())
+                      else 0 //amounts._2
+      (inAmount0, inAmount1)
+    }
 
-    // WITHDRAW RELATED FUNCTIONS
-    pure def computeWithdrawShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
+    // @audit-info when to truncate?
+    // can totalPoolValue be 0? Invariant candidate!
+    // LP.1 in specification invariants
+    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), price1to0: Dec): int =
+      val totalPoolValue = reserves._1 + reserves._2.fromInt().mul(price1to0).truncate()
+      val shareValue = existingShares.fromInt().div(totalPoolValue.fromInt()).truncate()
+      val depositValue = amounts._1 + amounts._2.fromInt().mul(price1to0).truncate()
+      depositValue * shareValue
+
+    // WITHDRAW TRANCHE RELATED FUNCTIONS
+    pure def computeWithdrawTrancheShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
         // @audit-issue Should this be truncate? Rounding discussion
         truncate(
             mul(
@@ -78,7 +108,7 @@ module utils {
             )
         )
 
-    pure def computeWithdrawAmountTakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec, totalTaker: int): int = 
+    pure def computeWithdrawTrancheAmountTakerToken(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec, totalTaker: int): int = 
         truncate(
             mulInt(
                 mul(
@@ -88,6 +118,17 @@ module utils {
                 totalTaker
             )
         )
+
+    // WITHDRAW POOL RELATED FUNCTIONS
+
+        
+    pure def computeAmountsWithdrawPool(reserves: (int, int), totalShares: int, shares: int): (int, int) =
+      val proRataShare = totalShares.fromInt().div(shares.fromInt()).truncate()
+      (proRataShare * reserves._1, proRataShare * reserves._2)
+
+    pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
+      {tokenPair: tokens, tick: tick, fee: fee}
+
 
     // CANCEL RELATED FUNCTIONS
     pure def computeCancelAmountMakerToken(percentUnfilled: Dec, userTotalTrancheShare: Dec, totalMaker: int): int =
