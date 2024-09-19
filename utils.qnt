@@ -127,8 +127,9 @@ module utils {
 
     // WITHDRAW POOL RELATED FUNCTIONS
 
+    // It also mimics the implementation
+    // Assumes that totalShares > 0, which is checked by the invariants
     // LP.4 in specification invariants
-    // Assumes that totalShares > 0, which is checked by the invariants     
     pure def computeAmountsWithdrawPool(reserves: (int, int), totalShares: int, shares: int): (int, int) =
       val proRataShare = shares.fromInt().div(totalShares.fromInt()).truncate()
       (proRataShare * reserves._1, proRataShare * reserves._2)
@@ -171,7 +172,7 @@ module utils {
                 val outAmount = inAmount.fromInt().mul(exchangeRate).truncate()
                 // update the acc value
                 {
-                    remainingPools: acc.remainingPools.setRemove(id),
+                    remainingPools: acc.remainingPools.setRemove(poolId),
                     inAmount: acc.inAmount - inAmount,
                     outAmount: acc.outAmount + outAmount,
                     changes: acc.changes.set(poolId, if (token0to1) (inAmount, outAmount) else (outAmount, inAmount))

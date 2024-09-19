@@ -298,12 +298,10 @@ module Dex {
         inAmount >= usedAmount,
         // Invariant LP.3
         resultIteration.changes.keys().forall(id =>
-            val poolBefore = before.pools.get(id)
-            val poolAfter = after.pools.get(id) 
-            val price = priceFromTick(-1*id.tick)
-            val poolValueBefore = poolBefore.reserves._1 + poolBefore.reserves._2.fromInt().mul(price).truncate()
-            val poolValueAfter = poolAfter.reserves._1 + poolAfter.reserves._2.fromInt().mul(price).truncate()
+            val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
+            val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
             val reservesChanges = resultIteration.changes.get(id)
+            // @audit-info I am not sure this is equivalent to reservesChanges._1 + reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore
             reservesChanges._1 > 0 or (reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore)
         )
       }
@@ -466,7 +464,15 @@ action withdrawLimitOrderAction: bool =
                                                          coins.keys().forall(token => coins.get(token) >= 0) and
                                                          shares.keys().forall(share => shares.get(share) >= 0))
     
-    
+    // Invariant: LP profit from their deposits
+    // LP.5 in specification invariants
+    // We may be able to write something stricktly greater if we keep track when swaps occur
+    val profitDeposit =
+      CREATORS.forall(creator => state.deposits.get(creator).keys().forall(poolId => if (state.poolShares.get(creator).get(poolId) == 0)
+                                                                                      val depositedAmounts = state.deposits.get(creator).get(poolId)
+                                                                                      val withdrawnAmounts = state.withdrawns.get(creator).get(poolId)
+                                                                                      withdrawnAmounts._1 >= depositedAmounts._1 and withdrawnAmounts._2 >= depositedAmounts._2
+                                                                                     else true))
 
     
 
