@@ -48,14 +48,14 @@ module Dex {
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = postWithdrawPool(state, result.state, msg)
+        postconditionOK' = withdrawPoolPostcondition(state, result.state, msg)
       }
     }
 
     // LP.4 in specification invariants
     // Assumes that shares > 0
     
-    pure def postWithdrawPool(before: State, after: State, msg: WithdrawPoolMsg): bool = 
+    pure def withdrawPoolPostcondition(before: State, after: State, msg: WithdrawPoolMsg): bool = 
       val pair =  orderTokenPair(msg.tokenPair)
       val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
       val poolId = getPoolId(pair, tick, msg.fee)
@@ -92,13 +92,13 @@ module Dex {
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = postDeposit(state, result.state, msg)
+        postconditionOK' = depositPostcondition(state, result.state, msg)
       }
     }
 
      // Can totalPoolValue be 0? Invariant candidate!
 
-    pure def postDeposit(before: State, after: State, msg: DepositMsg): bool = 
+    pure def depositPostcondition(before: State, after: State, msg: DepositMsg): bool = 
       // We could guarantee by design that the token pair is submitted in order
       val pair =  orderTokenPair(msg.tokenPair)
       val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
@@ -251,7 +251,7 @@ module Dex {
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = postSwap(state, result.state, msg)
+        postconditionOK' = swapPostcondition(state, result.state, msg)
       }
     }
     
@@ -287,11 +287,12 @@ module Dex {
         poolAfter.reserves._1 == poolBefore.reserves._2 + amounts._2
 
 
-    pure def postSwap(before: State, after: State, msg: SwapMsg): bool =
+    pure def swapPostcondition(before: State, after: State, msg: SwapMsg): bool =
       // Assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
-      val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, before.pools, inAmount)
+      val token0to1: bool = pair._1 == msg.tokenPair._1
+      val resultIteration = poolsLiquidityIteration(pair, token0to1, before.pools, inAmount)
       val outAmount = resultIteration.outAmount
       val usedAmount = inAmount - resultIteration.inAmount
       // ** State changes validation **

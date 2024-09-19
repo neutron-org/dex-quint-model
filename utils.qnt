@@ -149,10 +149,10 @@ module utils {
         else 
             -tick + fee
 
-
-    pure def poolsLiquidityIteration(pair: (Token, Token), tokenA: Token, pools: PoolId -> Pool, amount: int): 
+    // TODO: make the token0to1 clearer
+    pure def poolsLiquidityIteration(pair: (Token, Token), token0to1: bool, pools: PoolId -> Pool, amount: int): 
       {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
-        val token0to1 = pair._1 == tokenA
+        // val token0to1 = pair._1 == tokenA
         val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
         relevantPools.fold(
             {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
