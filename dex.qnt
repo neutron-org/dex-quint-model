@@ -52,8 +52,6 @@ module Dex {
       }
     }
 
-    // LP.4 in specification invariants
-    // Assumes that shares > 0
     
     pure def postWithdrawPool(before: State, after: State, msg: WithdrawPoolMsg): bool = 
       val pair =  orderTokenPair(msg.tokenPair)
@@ -113,7 +111,7 @@ module Dex {
       val sharesAfter = after.pools.get(poolId).shares
        //@audit-info Why one may not be allowed to deposit the full amount? ratios?
       val inAmounts = computeAmountsDeposit(reservesBefore, amounts)
-      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, priceFromTick(-poolId.tick))
+      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, poolId.tick)
       // Reserves are updated
       reservesAfter._1 == reservesBefore._1 + inAmounts._1 and 
       reservesAfter._2 == reservesBefore._2 + inAmounts._2 and
@@ -259,21 +257,6 @@ module Dex {
     pure def swap(state: State, msg: SwapMsg) : Result = {
       ok(state)
     }
-
-    /* pure def minPricePool(ids: Set[PoolId], AtoB: bool): PoolId = {
-      ids.fold(MAX_PICE_PRICE, (acc, id) => val price = computePrice(id.tick, id.fee)
-                                            take the minimum)
-      ids.chooseSome
-    }
-
-    computePrice(): int = val realTick = if (AtoB) tick + fee else - tick - fee
-                          fromTickToPrice(realTick)
-
-    pure def computeTick(tick: TickIndex, AtoB: bool, fee: Fee): TickIndex = {
-      tick
-    } */
-
-    
 
     pure def postconditionSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
       if (poolPair._1 == msgPair._1)       

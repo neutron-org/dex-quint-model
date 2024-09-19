@@ -35,9 +35,14 @@ module utils {
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
     
-    pure def computeAmountFromPrice(usedAmount: int, price: Dec): int = 0
+    pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
+      {tokenPair: tokens, tick: tick, fee: fee}
 
-    
+    pure def computePoolValue(reserves: (int, int), tick: int): int = 
+        val price1to0 = priceFromTick(-tick)
+        reserves._1 + reserves._2.fromInt().mul(price1to0).truncate()
+
+    pure def computeDepositValue(amounts: (int, int), tick: int): int = computePoolValue(amounts, tick)
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int) : bool =
         // @audit-info What is the best practice to encode assumptions on pure functions,
@@ -93,10 +98,10 @@ module utils {
     // @audit-info when to truncate?
     // can totalPoolValue be 0? Invariant candidate!
     // LP.1 in specification invariants
-    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), price1to0: Dec): int =
-      val totalPoolValue = reserves._1 + reserves._2.fromInt().mul(price1to0).truncate()
-      val shareValue = existingShares.fromInt().div(totalPoolValue.fromInt()).truncate()
-      val depositValue = amounts._1 + amounts._2.fromInt().mul(price1to0).truncate()
+    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int): int =
+      val poolValue = computePoolValue(reserves, tick)
+      val shareValue = existingShares.fromInt().div(poolValue.fromInt()).truncate()
+      val depositValue = computeDepositValue(amounts, tick)
       depositValue * shareValue
 
     // WITHDRAW TRANCHE RELATED FUNCTIONS
@@ -122,13 +127,11 @@ module utils {
 
     // WITHDRAW POOL RELATED FUNCTIONS
 
-        
+    // LP.4 in specification invariants
+    // Assumes that totalShares > 0, which is checked by the invariants     
     pure def computeAmountsWithdrawPool(reserves: (int, int), totalShares: int, shares: int): (int, int) =
-      val proRataShare = totalShares.fromInt().div(shares.fromInt()).truncate()
+      val proRataShare = shares.fromInt().div(totalShares.fromInt()).truncate()
       (proRataShare * reserves._1, proRataShare * reserves._2)
-
-    pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
-      {tokenPair: tokens, tick: tick, fee: fee}
 
     pure def minTickPool(ids: Set[PoolId], token0to1: bool): PoolId =
       val maxPoolId = {tokenPair: ids.chooseSome().tokenPair, tick: MAX_TICK, fee: MAX_FEE}
