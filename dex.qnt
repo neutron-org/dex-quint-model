@@ -292,7 +292,7 @@ module Dex {
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
       val token0to1: bool = pair._1 == msg.tokenPair._1
-      val resultIteration = poolsLiquidityIteration(pair, token0to1, before.pools, inAmount)
+      val resultIteration = poolsLiquidityIteration(pair, token0to1, before.pools, inAmount, None)
       val outAmount = resultIteration.outAmount
       val usedAmount = inAmount - resultIteration.inAmount
       // ** State changes validation **
@@ -310,7 +310,9 @@ module Dex {
         ),
         // ** Specification invariants **
         // Invariant Swap.1a
-        val minAmount = usedAmount.fromInt().mul(msg.limitPrice).truncate()
+        val limitPriceTick = unwrapTick(msg.limitPriceTick)          
+        val limitPrice = priceFromTick(limitPriceTick)
+        val minAmount = usedAmount.fromInt().mul(limitPrice).truncate()
         outAmount >= minAmount,
         // Invariant Swap.1b
         inAmount >= usedAmount,

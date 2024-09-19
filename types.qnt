@@ -12,6 +12,7 @@ module types {
     type TrancheKey = (TokenPair, TickIndex, TrancheIndex)
 
     
+    type Option[a] = None | Some(a)
     
     type LimitOrderType = 
         | FillOrKill
@@ -52,7 +53,7 @@ module types {
             receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
-            limitPrice: Dec
+            limitPriceTick: Option[int]
         }
 
     type PlaceLimitOrderMsg = {

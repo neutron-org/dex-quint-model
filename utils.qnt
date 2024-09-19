@@ -37,6 +37,12 @@ module utils {
     
     pure def computeAmountFromPrice(usedAmount: int, price: Dec): int = 0
 
+    pure def unwrapTick(tick: Option[int]) : int = 
+        match tick {
+            | Some(t) => t
+            | None => MAX_TICK
+        }
+
     
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int) : bool =
@@ -70,7 +76,13 @@ module utils {
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
     pure def computeMakerOrderMatches(state: State, msg: PlaceLimitOrderMsg) : (PoolId->int, TrancheKey-> int, int) = 
+    {
+        // first, exchange using the pools on the relevant tick (they are the first according to the sort)
+        // val poolIterationRes = poolsLiquidityIteration(msg.tokenPair, true, state.pools, msg.amountIn)
+        // val pool
+        // val remainingAmount = poolIterationRes.inAmount
         (Map(), Map(), -1)
+    }
 
     pure def poolSwap(state: State, poolId: PoolId, amount: int) : State = state
 
@@ -150,10 +162,18 @@ module utils {
             -tick + fee
 
     // TODO: make the token0to1 clearer
-    pure def poolsLiquidityIteration(pair: (Token, Token), token0to1: bool, pools: PoolId -> Pool, amount: int): 
+    pure def poolsLiquidityIteration(
+        pair: (Token, Token), 
+        token0to1: bool, 
+        pools: PoolId -> Pool, 
+        amount: int,
+        maxPriceTick: Option[int]
+        ): 
       {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
+        val maxTick = unwrapTick(maxPriceTick)
+            
         // val token0to1 = pair._1 == tokenA
-        val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
+        val relevantPools = pools.keys().filter(id => id.tokenPair == pair and id.tick <= maxTick)
         relevantPools.fold(
             {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
             (acc, id) =>
