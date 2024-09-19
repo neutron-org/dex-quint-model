@@ -127,8 +127,11 @@ module Dex {
         else 
             outShares) 
       and
-      sharesAfter == sharesBefore + outShares
-
+      sharesAfter == sharesBefore + outShares and
+      // Pool value increases
+      val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick) else 0
+      val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick)
+      poolValueAfter > poolValueBefore
 
 
     
