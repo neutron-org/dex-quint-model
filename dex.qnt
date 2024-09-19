@@ -15,6 +15,8 @@ module Dex {
     import utils.* from "utils"
     import basicSpells.* from "basicSpells"
     
+    // @audit-info When to truncate as a general rule?
+
     // CH: STATE VARIABLES
     var state: State  
     var postconditionOK: bool
@@ -55,7 +57,8 @@ module Dex {
     
     pure def postWithdrawPool(before: State, after: State, msg: WithdrawPoolMsg): bool = 
       val pair =  orderTokenPair(msg.tokenPair)
-      val poolId = getPoolId(pair, msg.tick, msg.fee)
+      val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
+      val poolId = getPoolId(pair, tick, msg.fee)
       // We assume that we do not remove empty pools
       // We do not check that poolBefore exists, as it is a precondition and not a postcondition
       val reservesBefore = before.pools.get(poolId).reserves
@@ -92,6 +95,8 @@ module Dex {
         postconditionOK' = postDeposit(state, result.state, msg)
       }
     }
+
+     // Can totalPoolValue be 0? Invariant candidate!
 
     pure def postDeposit(before: State, after: State, msg: DepositMsg): bool = 
       // We could guarantee by design that the token pair is submitted in order
@@ -268,53 +273,58 @@ module Dex {
       tick
     } */
 
-    pure def liquidityIteration(pair: (Token, Token), token: Token, pools: PoolId -> Pool, amount: int): PoolId -> (int, int) = Map()
-      /* val AtoB = pair._1 == token
-      val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
-      relevantPools.fold({remainingPools: relevantPools, inAmount: amount, outAmount: 0, result: relevantPools.mapBy(pool => (0, 0))}, (acc, id) =>
-        val min =  minPricePool(acc.remainingPools, AtoB)
-        val tick = computeTick(min.tick, AtoB, min.fee)
-        val price = priceFromTick(tick)
-        val outAmount = 1
-        {remainingPools: acc.remainingPools, inAmount: 0, outAmount: 0, result: acc.result}).result */
+    
 
     pure def postconditionSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
-      if (poolPair._1 == msgPair._1) poolAfter.reserves._1 == poolBefore.reserves._1 - amounts._1 and
-                                     poolAfter.reserves._2 == poolBefore.reserves._2 + amounts._2      
-      else poolAfter.reserves._1 == poolBefore.reserves._1 + amounts._1 and 
-           poolAfter.reserves._1 == poolBefore.reserves._2 - amounts._2
+      if (poolPair._1 == msgPair._1)       
+        poolAfter.reserves._1 == poolBefore.reserves._1 + amounts._1
+        and
+        poolAfter.reserves._2 == poolBefore.reserves._2 - amounts._2      
+
+      else 
+        poolAfter.reserves._1 == poolBefore.reserves._1 - amounts._1 
+        and 
+        poolAfter.reserves._1 == poolBefore.reserves._2 + amounts._2
+
 
     pure def postSwap(before: State, after: State, msg: SwapMsg): bool =
       // Assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
-      val resultIteration = liquidityIteration(pair, msg.tokenPair._1, before.pools, inAmount)
-      val outAmount = if (pair._1 == msg.tokenPair._1) resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._2)
-                      else resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._1)
-      val usedAmount = if (pair._1 == msg.tokenPair._1) resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._1)
-                       else resultIteration.keys().fold(0, (acc, id) => acc + resultIteration.get(id)._2)
+      val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, before.pools, inAmount)
+      val outAmount = resultIteration.outAmount
+      val usedAmount = inAmount - resultIteration.inAmount
       // ** State changes validation **
-      // Coins are transferred
-      after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount and
-      after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount and
-      // Reserves are updated
-      resultIteration.keys().forall(id => val poolBefore = before.pools.get(id)
-                                          val poolAfter = after.pools.get(id)
-                                          postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.get(id))) and
-      // ** Specification invariants **
-      // Invariant Swap.1a
-      val minAmount = computeAmountFromPrice(usedAmount, msg.limitPrice)
-      outAmount >= minAmount and
-      // Invariant Swap.1b
-      inAmount >= usedAmount and
-      // Invariant LP.3
-      resultIteration.keys().forall(id => val poolBefore = before.pools.get(id)
-                                          val poolAfter = after.pools.get(id) 
-                                          val price = priceFromTick(-1*id.tick)
-                                          val poolValueBefore = poolBefore.reserves._1 + poolBefore.reserves._2.fromInt().mul(price).truncate()
-                                          val poolValueAfter = poolAfter.reserves._1 + poolAfter.reserves._2.fromInt().mul(price).truncate()
-                                          val reservesChanges = resultIteration.get(id)
-                                          reservesChanges._1 > 0 or reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore)
+      
+      and{
+        // Coins are transferred
+        after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount,
+        after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount,
+        // Reserves are updated
+        resultIteration.changes.keys().forall(
+            id => 
+            val poolBefore = before.pools.get(id)
+            val poolAfter = after.pools.get(id)
+            postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.changes.get(id))
+        ),
+        // ** Specification invariants **
+        // Invariant Swap.1a
+        val minAmount = usedAmount.fromInt().mul(msg.limitPrice).truncate()
+        outAmount >= minAmount,
+        // Invariant Swap.1b
+        inAmount >= usedAmount,
+        // Invariant LP.3
+        resultIteration.changes.keys().forall(id =>
+            val poolBefore = before.pools.get(id)
+            val poolAfter = after.pools.get(id) 
+            val price = priceFromTick(-1*id.tick)
+            val poolValueBefore = poolBefore.reserves._1 + poolBefore.reserves._2.fromInt().mul(price).truncate()
+            val poolValueAfter = poolAfter.reserves._1 + poolAfter.reserves._2.fromInt().mul(price).truncate()
+            val reservesChanges = resultIteration.changes.get(id)
+            reservesChanges._1 > 0 or (reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore)
+        )
+      }
+      
     
  
     

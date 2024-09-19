@@ -4,6 +4,7 @@ module utils {
     import dec.* from "lib/dec"
     import types.* from "types"
     import consts.* from "consts"
+    import basicSpells.* from "basicSpells"
 
     
 
@@ -82,10 +83,10 @@ module utils {
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
       val inAmount0 = if (reserves._2 > 0)
                         min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())
-                      else 0 //amounts._1
+                      else amounts._1
       val inAmount1 = if (reserves._1 > 0)
                         min(amounts._2, amounts._1.fromInt().mul(reserves._2.fromInt()).div(reserves._1.fromInt()).truncate())
-                      else 0 //amounts._2
+                      else amounts._2
       (inAmount0, inAmount1)
     }
 
@@ -128,6 +129,52 @@ module utils {
 
     pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
+
+    pure def minTickPool(ids: Set[PoolId], token0to1: bool): PoolId =
+      val maxPoolId = {tokenPair: ids.chooseSome().tokenPair, tick: MAX_TICK, fee: MAX_FEE}
+      ids.fold(
+        maxPoolId, 
+        (acc, id) => 
+            if (token0to1 and id.tick + id.fee < acc.tick + acc.fee) 
+                id
+            else if (not(token0to1) and -id.tick + id.fee < -acc.tick + acc.fee) 
+                id
+            else 
+                acc 
+    )
+
+    pure def computeReserveTick(tick: TickIndex, token0to1: bool, fee: Fee): TickIndex = 
+        if (token0to1) 
+            tick + fee 
+        else 
+            -tick + fee
+
+
+    pure def poolsLiquidityIteration(pair: (Token, Token), tokenA: Token, pools: PoolId -> Pool, amount: int): 
+      {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
+        val token0to1 = pair._1 == tokenA
+        val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
+        relevantPools.fold(
+            {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
+            (acc, id) =>
+                // Compute cheapest exchange rate among the remaining pools
+                val poolId =  minTickPool(acc.remainingPools, token0to1)
+                val reserveTick = computeReserveTick(poolId.tick, token0to1, poolId.fee)
+                val exchangeRate = priceFromTick(reserveTick)
+                // Compute the inAmount and outAmount from the previously selected pool
+                val reservesTokenB = if (token0to1) pools.get(poolId).reserves._2 else pools.get(poolId).reserves._1
+                val requiredAmount = acc.inAmount.fromInt().mul(exchangeRate).truncate()
+                val inAmount = if (requiredAmount <= reservesTokenB) acc.inAmount else reservesTokenB
+                val outAmount = inAmount.fromInt().mul(exchangeRate).truncate()
+                // update the acc value
+                {
+                    remainingPools: acc.remainingPools.setRemove(id),
+                    inAmount: acc.inAmount - inAmount,
+                    outAmount: acc.outAmount + outAmount,
+                    changes: acc.changes.set(poolId, if (token0to1) (inAmount, outAmount) else (outAmount, inAmount))
+                }
+        )
+
 
 
     // CANCEL RELATED FUNCTIONS
