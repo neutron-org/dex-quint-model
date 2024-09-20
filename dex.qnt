@@ -52,8 +52,6 @@ module Dex {
       }
     }
 
-    // LP.4 in specification invariants
-    // Assumes that shares > 0
     
     pure def withdrawPoolPostcondition(before: State, after: State, msg: WithdrawPoolMsg): bool = 
       val pair =  orderTokenPair(msg.tokenPair)
@@ -113,7 +111,7 @@ module Dex {
       val sharesAfter = after.pools.get(poolId).shares
        //@audit-info Why one may not be allowed to deposit the full amount? ratios?
       val inAmounts = computeAmountsDeposit(reservesBefore, amounts)
-      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, priceFromTick(-poolId.tick))
+      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, poolId.tick)
       // Reserves are updated
       reservesAfter._1 == reservesBefore._1 + inAmounts._1 and 
       reservesAfter._2 == reservesBefore._2 + inAmounts._2 and
@@ -129,8 +127,11 @@ module Dex {
         else 
             outShares) 
       and
-      sharesAfter == sharesBefore + outShares
-
+      sharesAfter == sharesBefore + outShares and
+      // Pool value increases
+      val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick) else 0
+      val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick)
+      poolValueAfter > poolValueBefore
 
 
     
@@ -265,21 +266,6 @@ module Dex {
       ok(state)
     }
 
-    /* pure def minPricePool(ids: Set[PoolId], AtoB: bool): PoolId = {
-      ids.fold(MAX_PICE_PRICE, (acc, id) => val price = computePrice(id.tick, id.fee)
-                                            take the minimum)
-      ids.chooseSome
-    }
-
-    computePrice(): int = val realTick = if (AtoB) tick + fee else - tick - fee
-                          fromTickToPrice(realTick)
-
-    pure def computeTick(tick: TickIndex, AtoB: bool, fee: Fee): TickIndex = {
-      tick
-    } */
-
-    
-
     pure def postconditionSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
       if (poolPair._1 == msgPair._1)       
         poolAfter.reserves._1 == poolBefore.reserves._1 + amounts._1
@@ -324,12 +310,10 @@ module Dex {
         inAmount >= usedAmount,
         // Invariant LP.3
         resultIteration.changes.keys().forall(id =>
-            val poolBefore = before.pools.get(id)
-            val poolAfter = after.pools.get(id) 
-            val price = priceFromTick(-1*id.tick)
-            val poolValueBefore = poolBefore.reserves._1 + poolBefore.reserves._2.fromInt().mul(price).truncate()
-            val poolValueAfter = poolAfter.reserves._1 + poolAfter.reserves._2.fromInt().mul(price).truncate()
+            val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
+            val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
             val reservesChanges = resultIteration.changes.get(id)
+            // @audit-info I am not sure this is equivalent to reservesChanges._1 + reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore
             reservesChanges._1 > 0 or (reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore)
         )
       }
@@ -487,12 +471,23 @@ action withdrawLimitOrderAction: bool =
     val nonNegativeSharesSupply = state.pools.keys().forall(poolId => state.pools.get(poolId).shares >= 0)
 
     // Invariant: coin and share balances are zero or greater 
-    val nonNegativeBalances = CREATORS.forall(creator => val coins = state.coins.get(creator)
-                                                         val shares = state.poolShares.get(creator)
-                                                         coins.keys().forall(token => coins.get(token) >= 0) and
-                                                         shares.keys().forall(share => shares.get(share) >= 0))
+    val nonNegativeBalances = CREATORS.forall(
+        creator => val coins = state.coins.get(creator)
+                   val shares = state.poolShares.get(creator)
+                   coins.keys().forall(token => coins.get(token) >= 0) and
+                   shares.keys().forall(share => shares.get(share) >= 0))
     
-    
+    // Invariant: LP profit from their deposits
+    // LP.5 in specification invariants
+    // We may be able to write something stricktly greater if we keep track when swaps occur
+    val profitDeposit =
+      CREATORS.forall(
+        creator => state.deposits.get(creator).keys().forall(
+            poolId => if (state.poolShares.get(creator).get(poolId) == 0)
+                        val depositedAmounts = state.deposits.get(creator).get(poolId)
+                        val withdrawnAmounts = state.poolWithdrawns.get(creator).get(poolId)
+                        withdrawnAmounts._1 >= depositedAmounts._1 and withdrawnAmounts._2 >= depositedAmounts._2
+                      else true))
 
     
 

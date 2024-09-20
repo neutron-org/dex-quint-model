@@ -150,7 +150,12 @@ module types {
         pools: PoolId -> Pool,
 
         // In the implementation, these are connected to the block numbers. 
-        lastTrancheIndex: int
+        lastTrancheIndex: int,
+
+        deposits: Addr -> PoolId -> (int, int),
+        poolWithdrawns: Addr -> PoolId -> (int, int)
+
+
 
     }
 
