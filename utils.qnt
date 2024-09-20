@@ -183,6 +183,11 @@ module utils {
                 }
         )
 
+    pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int) :
+      PoolId -> {amounts: (int, int), swaps: bool} = 
+        poolIds.fold(userDeposits, (acc, id) => if (userDeposits.has(id) and userShares.get(id) > 0)
+                                                    acc.set(id, {swaps: true, ...userDeposits.get(id)})
+                                                else acc)
 
 
     // CANCEL RELATED FUNCTIONS

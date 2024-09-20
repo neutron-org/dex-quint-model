@@ -38,7 +38,19 @@ module Dex {
       // ** Specification invariants **
 
     pure def withdrawPool(state: State, msg: WithdrawPoolMsg) : Result = {
-      ok(state)
+      // deposits and poolWithdrawns variable management
+      val pair =  orderTokenPair(msg.tokenPair)
+      val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
+      val poolId = getPoolId(pair, tick, msg.fee)
+      // pool must exist
+      val pool = state.pools.get(poolId)
+      val outAmounts = computeAmountsWithdrawPool(pool.reserves, pool.shares, msg.amount)
+      // poolWithdrawns variable management
+      val withdrawns = state.poolWithdrawns.get(msg.creator).get(poolId)
+      val updatedWithdraws = (withdrawns._1 + outAmounts._1, withdrawns._2 + outAmounts._2)
+      ok({poolWithdrawns: state.poolWithdrawns.set(msg.creator, state.poolWithdrawns.get(msg.creator).set(poolId, updatedWithdraws)),
+          ...state})                  
+      //ok(state)
     }
 
     
@@ -82,7 +94,26 @@ module Dex {
   
     //    CH: DEPOSITING INTO POOLS
     pure def deposit(state: State, msg: DepositMsg) : Result = {
-      ok(state)
+      val pair =  orderTokenPair(msg.tokenPair)
+      val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
+      val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
+      val poolId = getPoolId(pair, tick, msg.fee)
+      val pool = if (state.pools.has(poolId)) state.pools.get(poolId)
+                 else {reserves: (0, 0), shares: 0}
+      val inAmounts = computeAmountsDeposit(pool.reserves, amounts)
+      // deposits and poolWithdrawns variable management
+      val isNewPeriod = if (state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0) false 
+                        else true
+      val deposit = if (not(isNewPeriod)) state.deposits.get(msg.creator).get(poolId)
+                    else {amounts: (0,0), swaps: false}
+      val withdrawns = if (not(isNewPeriod)) state.poolWithdrawns.get(msg.creator).get(poolId)
+                       else (0,0)
+      val updatedDeposit = {amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
+                            swaps: if (isNewPeriod) false else deposit.swaps}
+      ok({deposits: state.deposits.set(msg.creator, state.deposits.get(msg.creator).mapSafeSet(poolId, updatedDeposit)),
+          poolWithdrawns: state.poolWithdrawns.set(msg.creator, state.poolWithdrawns.get(msg.creator).mapSafeSet(poolId, withdrawns)),
+          ...state})                  
+      //ok(state)
     }
 
     action depositAction(msg: DepositMsg): bool = {
@@ -256,9 +287,19 @@ module Dex {
       }
     }
     
-    
     pure def swap(state: State, msg: SwapMsg) : Result = {
-      ok(state)
+      val inAmount = msg.amount
+      val pair =  orderTokenPair(msg.tokenPair)
+      val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, state.pools, inAmount)
+      // deposits variable management
+      val relevantPoolIds = resultIteration.changes.keys().filter(id => val changes = resultIteration.changes.get(id)
+                                                                        changes._1 + changes._2 > 0)
+      val updatedDeposits = CREATORS.fold(state.deposits, (acc, user) => acc.set(user, updateSwapsBool(msg.creator,
+                                                                                                       relevantPoolIds,
+                                                                                                       state.deposits.get(user),
+                                                                                                       state.poolShares.get(user))))
+      ok({deposits: updatedDeposits, ...state})
+      //ok(state)
     }
 
     pure def postconditionSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
@@ -474,9 +515,10 @@ action withdrawLimitOrderAction: bool =
       CREATORS.forall(
         creator => state.deposits.get(creator).keys().forall(
             poolId => if (state.poolShares.get(creator).get(poolId) == 0)
-                        val depositedAmounts = state.deposits.get(creator).get(poolId)
+                        val deposit = state.deposits.get(creator).get(poolId)
                         val withdrawnAmounts = state.poolWithdrawns.get(creator).get(poolId)
-                        withdrawnAmounts._1 >= depositedAmounts._1 and withdrawnAmounts._2 >= depositedAmounts._2
+                        if (deposit.swaps) withdrawnAmounts._1 > deposit.amounts._1 and withdrawnAmounts._2 > deposit.amounts._2
+                        else withdrawnAmounts._1 == deposit.amounts._1 and withdrawnAmounts._2 == deposit.amounts._2
                       else true))
 
     

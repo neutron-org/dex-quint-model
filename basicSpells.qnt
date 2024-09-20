@@ -109,4 +109,23 @@ module basicSpells {
     assert(Map(3 -> 4, 7 -> 8) == Map(3 -> 4, 5 -> 6, 7 -> 8).mapRemove(5)),
     assert(Map() == Map().mapRemove(3)),
   }
+
+  /// Safely set a map entry.
+  ///
+  /// - @param __map a map to set an entry to
+  /// - @param __key the key of an entry to set
+  /// - @returns a new map that contains all entries of __map
+  ///          and an entry for the key __key
+  pure def mapSafeSet(__map: a -> b, __key: a, __value: b): a -> b = {
+    if (__map.has(__key)) {
+      __map.set(__key, __value)
+    } else {
+      __map.keys().union(Set(__key)).mapBy(__k => if (__k == __key) __value else __map.get(__k))
+    }
+  }
+
+  run mapSafeSetTest = all {
+    assert(Map(2 -> 3, 4 -> 5).mapSafeSet(1, 7) == Map(1 -> 7, 2 -> 3, 4 -> 5)),
+    assert(Map(2 -> 3, 4 -> 5).mapSafeSet(2, 7) == Map(2 -> 7, 4 -> 5))
+  }
 }
