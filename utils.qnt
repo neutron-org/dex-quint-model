@@ -141,7 +141,11 @@ module utils {
         (acc, id) => 
             if (token0to1 and id.tick + id.fee < acc.tick + acc.fee) 
                 id
+            else if (token0to1 and id.tick + id.fee == acc.tick + acc.fee and id.fee < acc.fee) 
+                id
             else if (not(token0to1) and -id.tick + id.fee < -acc.tick + acc.fee) 
+                id
+            else if (not(token0to1) and -id.tick + id.fee == -acc.tick + acc.fee and id.fee < acc.fee) 
                 id
             else 
                 acc 
@@ -158,9 +162,9 @@ module utils {
       {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
         val token0to1 = pair._1 == tokenA
         val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
-        relevantPools.fold(
+        1.to(size(relevantPools)).fold(
             {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
-            (acc, id) =>
+            (acc, _) =>
                 // Compute cheapest exchange rate among the remaining pools
                 val poolId =  minTickPool(acc.remainingPools, token0to1)
                 val reserveTick = computeReserveTick(poolId.tick, token0to1, poolId.fee)

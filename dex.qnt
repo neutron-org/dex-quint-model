@@ -462,20 +462,23 @@ action withdrawLimitOrderAction: bool =
     val nonNegativeSharesSupply = state.pools.keys().forall(poolId => state.pools.get(poolId).shares >= 0)
 
     // Invariant: coin and share balances are zero or greater 
-    val nonNegativeBalances = CREATORS.forall(creator => val coins = state.coins.get(creator)
-                                                         val shares = state.poolShares.get(creator)
-                                                         coins.keys().forall(token => coins.get(token) >= 0) and
-                                                         shares.keys().forall(share => shares.get(share) >= 0))
+    val nonNegativeBalances = CREATORS.forall(
+        creator => val coins = state.coins.get(creator)
+                   val shares = state.poolShares.get(creator)
+                   coins.keys().forall(token => coins.get(token) >= 0) and
+                   shares.keys().forall(share => shares.get(share) >= 0))
     
     // Invariant: LP profit from their deposits
     // LP.5 in specification invariants
     // We may be able to write something stricktly greater if we keep track when swaps occur
     val profitDeposit =
-      CREATORS.forall(creator => state.deposits.get(creator).keys().forall(poolId => if (state.poolShares.get(creator).get(poolId) == 0)
-                                                                                      val depositedAmounts = state.deposits.get(creator).get(poolId)
-                                                                                      val withdrawnAmounts = state.withdrawns.get(creator).get(poolId)
-                                                                                      withdrawnAmounts._1 >= depositedAmounts._1 and withdrawnAmounts._2 >= depositedAmounts._2
-                                                                                     else true))
+      CREATORS.forall(
+        creator => state.deposits.get(creator).keys().forall(
+            poolId => if (state.poolShares.get(creator).get(poolId) == 0)
+                        val depositedAmounts = state.deposits.get(creator).get(poolId)
+                        val withdrawnAmounts = state.poolWithdrawns.get(creator).get(poolId)
+                        withdrawnAmounts._1 >= depositedAmounts._1 and withdrawnAmounts._2 >= depositedAmounts._2
+                      else true))
 
     
 

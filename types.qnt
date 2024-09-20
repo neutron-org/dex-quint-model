@@ -146,9 +146,9 @@ module types {
 
         // In the implementation, these are connected to the block numbers. 
         lastTrancheIndex: int,
-        
+
         deposits: Addr -> PoolId -> (int, int),
-        withdrawns: Addr -> PoolId -> (int, int)
+        poolWithdrawns: Addr -> PoolId -> (int, int)
 
 
 
