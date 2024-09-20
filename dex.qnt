@@ -294,10 +294,9 @@ module Dex {
             postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.changes.get(id))
         ),
         // ** Specification invariants **
-        // Invariant Swap.1a
+        // Invariant Swap.1
         val minAmount = usedAmount.fromInt().mul(msg.limitPrice).truncate()
         outAmount >= minAmount,
-        // Invariant Swap.1b
         inAmount >= usedAmount,
         // Invariant LP.3
         resultIteration.changes.keys().forall(id =>
