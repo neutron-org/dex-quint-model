@@ -8,8 +8,12 @@ module types {
     type Fee = int
     // a tranche index is there for multiple tranches of the same tick
     type TrancheIndex = int
-    // each trancheId is a tuple of ((tokenA, tokenB), tick, trancheIndex)
-    type TrancheKey = (TokenPair, TickIndex, TrancheIndex)
+
+    type TrancheKey = {
+        pair: TokenPair,
+        tick: TickIndex,
+        id: TrancheIndex
+    }
 
     
     type Option[a] = None | Some(a)
