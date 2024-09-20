@@ -275,7 +275,6 @@ module utils {
       {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
         
             
-        // val token0to1 = pair._1 == tokenA
         val relevantPools = pools.keys().filter(id => id.tokenPair == pair and id.tick <= maxPriceTick)
         1.to(size(relevantPools)).fold(
             {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
