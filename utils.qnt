@@ -211,13 +211,16 @@ module utils {
                         // @audit-issue should we take into account numerical considerations here and instead of dividing,
                         // calculate the opposite price tick and multiply?
                         val userPutsIntoPool = intDivDec(userGetsFromPool, exchangeRate).truncate()
+                        val newPoolStand =
+                            if (isPairNormalized)
+                                (pool.reserves._1 + userPutsIntoPool, pool.reserves._2 - userGetsFromPool)
+                            else
+                                (pool.reserves._1 - userGetsFromPool, pool.reserves._2 + userPutsIntoPool)
 
                         {
                             remainingPools: acc.remainingPools.setRemove(minPoolKey),
                             remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
-                            poolUpdates: acc.poolUpdates.set(
-                                minPoolKey, 
-                                if (isPairNormalized) (userPutsIntoPool, userGetsFromPool) else (userGetsFromPool, userPutsIntoPool)),
+                            poolUpdates: acc.poolUpdates.set(minPoolKey, newPoolStand),
                             ...acc
                         }
                         
