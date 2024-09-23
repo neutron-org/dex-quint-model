@@ -158,7 +158,11 @@ module utils {
         amount: int,
         maxPriceTick: int,
         maxAmountOut: int // in the first take, I will ignore this one
-    ): {remainingAmount: int, tranchesUpdates: TrancheKey -> int, poolUpdates: PoolId -> (int, int)} =
+    ): {
+        remainingAmount: int, 
+        tranchesUpdates: TrancheKey -> {makerReservesAmountDiff: int, takerReservesAmountDiff: int}, 
+        poolUpdates: PoolId -> {token0DiffAmount: int, token1DiffAmount: int}
+        } =
         
         // I need this for pools because they are stored only under normalized pairs
         val normalizedPair = orderTokenPair(pair)
@@ -175,8 +179,8 @@ module utils {
         // happening over keys: instead, a minimum key is found in each iteration and the iteration continues.
         val foldResult = 1.to(relevantLiquiditySize).fold(
             {
-                tranchesUpdates: Map(), // TrancheKey -> int
-                poolUpdates: Map(), // PoolId -> (int, int)
+                tranchesUpdates: Map(), 
+                poolUpdates: Map(), 
                 remainingAmountToExchange: amount, 
                 remainingTranches: relevantTranches, 
                 remainingPools: relevantPools},
@@ -188,15 +192,18 @@ module utils {
                     // find me the minumum tranche key and the minimum pool key
                     val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches)
                     val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized)
+                    // the pool price includes the fee
                     val minPoolReserveTick = computeReserveTick(minPoolKey.tick, isPairNormalized, minPoolKey.fee)
-                    // use the tranche key only if its price is strictly lower than that of the pool
+                    // use the tranche key only if its price is strictly lower than that of the pool 
                     if (minTrancheKey.tick < minPoolReserveTick)                        
                         // I want to know how much I can exchange in this tranche 
                         val tranche = tranches.get(minTrancheKey)
                         val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
                         // update the acc value
                         {
-                            tranchesUpdates: acc.tranchesUpdates.set(minTrancheKey, exchangeInfo.trancheRemainingAmount),
+                            tranchesUpdates: acc.tranchesUpdates.set(
+                                minTrancheKey, 
+                                {makerReservesAmountDiff: -exchangeInfo.exchangedMakerAmount, takerReservesAmountDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
                             remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
                             ...acc
@@ -212,16 +219,17 @@ module utils {
                         // @audit-issue should we take into account numerical considerations here and instead of dividing,
                         // calculate the opposite price tick and multiply?
                         val userPutsIntoPool = intDivDec(userGetsFromPool, exchangeRate).truncate()
-                        val newPoolStand =
-                            if (isPairNormalized)
-                                (pool.reserves._1 + userPutsIntoPool, pool.reserves._2 - userGetsFromPool)
-                            else
-                                (pool.reserves._1 - userGetsFromPool, pool.reserves._2 + userPutsIntoPool)
 
                         {
                             remainingPools: acc.remainingPools.setRemove(minPoolKey),
                             remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
-                            poolUpdates: acc.poolUpdates.set(minPoolKey, newPoolStand),
+                            poolUpdates: acc.poolUpdates.set(
+                                minPoolKey, 
+                                if (isPairNormalized) 
+                                    {token0DiffAmount: userPutsIntoPool, token1DiffAmount: -userGetsFromPool} 
+                                else 
+                                    {token0DiffAmount: -userGetsFromPool, token1DiffAmount: userPutsIntoPool}
+                                ),
                             ...acc
                         }
                         

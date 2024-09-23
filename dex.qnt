@@ -211,38 +211,53 @@ module Dex {
             msg.maxAmountOut
             
         )
-        val updatedPools = fulfilledOrderInfo.poolUpdates
-        val updatedTranches = fulfilledOrderInfo.tranchesUpdates
+        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
+        val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
         val remainingAmount = fulfilledOrderInfo.remainingAmount
 
         
         and{
-            // updated pools equal the 'after' state  
-            updatedPools.keys().forall(
-                poolId => after.pools.get(poolId).reserves == updatedPools.get(poolId)
+            // updated pools equal the 'after' state, the rest is unchanged
+            before.pools.keys().forall(poolId => 
+                if (poolsUpdateInfo.keys().contains(poolId))
+                    val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdateInfo.get(poolId)._1,
+                                          before.pools.get(poolId).reserves._2 + poolsUpdateInfo.get(poolId)._2)
+                    after.pools.get(poolId).reserves == updatedReserves
+                else
+                    before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
             ),
             
-            // updated tranches equal the 'after' state
-            updatedTranches.keys().forall(
-                trancheKey => after.tranches.get(trancheKey).reservesMaker == updatedTranches.get(trancheKey)
+            // updated tranches equal the 'after' state, the rest is unchanged
+            before.tranches.keys().forall(trancheKey =>
+                if (tranchesUpdateInfo.keys().contains(trancheKey))
+                    before.tranches.get(trancheKey) ==
+                    {
+                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesAmountDiff,
+                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesAmountDiff,
+                        ...before.tranches.get(trancheKey),
+                    }
+                else
+                    before.tranches.get(trancheKey) == after.tranches.get(trancheKey)
             ),
 
             // summing up the total amount that the user received and checking if that is what the user has now
             val isPairNormalized = tokenLT(msg.tokenPair._1, msg.tokenPair._2, TOKEN_NUM_VALUES)
-            val userGotFromPools = updatedPools.keys().fold(
+            val userGotFromPools = poolsUpdateInfo.keys().fold(
                 0,
                 (acc, poolId) => 
                 val userGot = 
                     if (isPairNormalized) 
-                        before.pools.get(poolId).reserves._2 - after.pools.get(poolId).reserves._2
+                        abs(poolsUpdateInfo.get(poolId)._2)
                     else
-                        before.pools.get(poolId).reserves._1 - after.pools.get(poolId).reserves._1
+                        abs(poolsUpdateInfo.get(poolId)._1)                
                 acc + userGot
             )
-            val userGotFromTranches = updatedTranches.keys().fold(
+            val userGotFromTranches = tranchesUpdateInfo.keys().fold(
                 0,
                 (acc, trancheKey) => 
-                val userGot = after.tranches.get(trancheKey).reservesMaker - before.tranches.get(trancheKey).reservesMaker
+                // the abs is because of the way the diff is expressed as negative to signify that the amount was taken from the tranche
+                val userGot = abs(tranchesUpdateInfo.get(trancheKey).takerReservesAmountDiff)
+                
                 acc + userGot
             )
             val userDiff = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)

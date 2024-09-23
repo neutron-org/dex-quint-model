@@ -65,7 +65,6 @@ module types {
             orderType: LimitOrderType,            
             // we have to choose tickIndex because the log operation is missing
             // @audit-info : If we will really need the log operation, what are our Quint options?
-            // TODO: use price amount here instead of the tick to follow the implementation faithfully
             tick: TickIndex, 
             tokenPair: (Token, Token),
             amountIn: int,

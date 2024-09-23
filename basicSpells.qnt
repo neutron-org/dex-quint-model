@@ -39,6 +39,10 @@ module basicSpells {
     if (__i > __j) __i else __j
   }
 
+  pure def abs(__i: int): int = {
+    if (__i < 0) -__i else __i
+  }
+
   run maxTest = all {
     assert(max(3, 4) == 4),
     assert(max(6, 3) == 6),
