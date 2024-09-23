@@ -139,12 +139,18 @@ module Dex {
     
     //    CH: PLACING A LIMIT ORDER
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =        
-        // @audit-info Quint : It would be great to have the ability to unpack a tuple into variables immediately        
-        val fulfilledOrderInfo = computeMakerOrderMatches(state, msg)
-        val poolsToSwap = fulfilledOrderInfo._1
-        val tranchesToTrade = fulfilledOrderInfo._2
-        val remainingAmount = fulfilledOrderInfo._3
-        // End of Quint comment
+        val fulfilledOrderInfo = limitOrderLiquidityIteration(
+            msg.tokenPair,            
+            state.tranches,
+            state.pools,
+            msg.amountIn,
+            msg.tick,
+            msg.maxAmountOut
+            
+        )
+        val poolsToSwap = fulfilledOrderInfo.poolUpdates
+        val tranchesToTrade = fulfilledOrderInfo.tranchesUpdates
+        val remainingAmount = fulfilledOrderInfo.remainingAmount
 
         // 1) iterated swaps over relevant pools
         val stateAfterPoolSwaps = poolsToSwap.keys().fold(
@@ -233,12 +239,15 @@ module Dex {
         // with this choice, we are not modelling user's funds. The assumption is that the user has as much as needed.
         // This is a simplification that we can revisit later.
         nondet amount = oneOf(1.to(MAX_AMOUNT))
+        // not implemented for now, so using a trivial value
+        val maxAmountOut = amount + 1
         val limitOrderMsg = {
             creator: c,
             orderType: o,
             tick: t,
             tokenPair: token_pair,
-            amountIn: amount
+            amountIn: amount,
+            maxAmountOut: maxAmountOut
         }
         val res = placeLimitOrder(state, limitOrderMsg)
 

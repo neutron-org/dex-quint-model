@@ -67,7 +67,8 @@ module types {
             // @audit-info : If we will really need the log operation, what are our Quint options?
             tick: TickIndex,
             tokenPair: (Token, Token),
-            amountIn: int
+            amountIn: int,
+            maxAmountOut: int,
         }
         
     type CancelLimitOrderMsg = {
@@ -96,6 +97,7 @@ module types {
         // @audit-info merge this in the merging session with Manu
         | PoolReserves
 
+    type LiquidityKey = TrancheLiquidityKey(TrancheKey) | PoolLiquidityKey(PoolId)
     type Tranche = {
             // does not exist in the code: here, we want to be explicit about it.
             // should only be true until a first exchange happens through the tranche

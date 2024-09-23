@@ -56,7 +56,7 @@ module utils {
         token_num_values.get(t1) < token_num_values.get(t2)
 
 
-    pure def orderTokenPair(pair: (Token, Token)): (Token, Token) =
+    pure def orderTokenPair(pair: TokenPair): TokenPair =
       if (tokenLT(pair._1, pair._2, TOKEN_NUM_VALUES)) pair else (pair._2, pair._1)
 
     pure def normalizeCoinAndTick(tokenPair: (Token, Token), tick: int) : ((Token, Token), int) =
@@ -78,7 +78,8 @@ module utils {
     pure def calculateTrancheExchangableAmount(amount: int, tranche: Tranche): 
     {
         trancheRemainingAmount: int,
-        exchangedTakerAmount: int
+        exchangedTakerAmount: int,
+        exchangedMakerAmount: int
     } = {
         
         val priceTakerToMaker = priceFromTick(tranche.tick)
@@ -94,15 +95,29 @@ module utils {
             
             {
                 trancheRemainingAmount: trancheRemainingMakerToken,
-                exchangedTakerAmount: amount
+                exchangedTakerAmount: amount,
+                exchangedMakerAmount: tranche.reservesMaker - trancheRemainingMakerToken
             }
         else
             {
                 trancheRemainingAmount: 0,
-                exchangedTakerAmount: trancheAmountInTakerToken
+                exchangedTakerAmount: trancheAmountInTakerToken,
+                exchangedMakerAmount: tranche.reservesMaker
             }                
     }
-        
+    
+    pure def getMinimumTranche(tranches: Set[TrancheKey]): TrancheKey =
+        tranches.fold(
+            // tranches.chooseSome() ideally, but that one is still unimplemented in the simulation
+            {pair: ("A", "B"), tick: MAX_TICK, id: 0},
+            (acc, key) => 
+                if (trancheLTE(key, acc))
+                    key
+                else 
+                    acc
+        )
+
+ 
 
     pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey]): TrancheKey =
         trancheKeys.fold(
@@ -114,41 +129,21 @@ module utils {
                 else 
                     acc
         )
+    
 
-    pure def tranchesLiquidityIteration(
-        pair: TokenPair,
-        tranches: TrancheKey -> Tranche,
-        amount: int,
-        maxPriceTick: int
-    ): {tranchesUpdates: TrancheKey -> int, remainingAmount: int} =
-        if (amount == 0)
-            {tranchesUpdates: Map(), remainingAmount: 0}
-        else
-            val relevantTranches = tranches.keys().filter(key => key.pair == pair and key.tick <= maxPriceTick)
+    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool): PoolId =
+        poolKeys.fold(
+            // ideally, choose some, but doesn't work in the simulation
+            {tokenPair: ("A", "B"), tick: MAX_TICK, fee: MAX_FEE},
+            (acc, key) => 
+                if (poolLTE(key, acc, isPairNormalized)) 
+                    key
+                else 
+                    acc
 
-            // the purpose of this fold is to iterate as many times as there are keys. But the iteration is not
-            // happening over keys: instead, a minimum key is found in each iteration and the iteration continues.
-            val foldResult = relevantTranches.fold(
-                {tranchesUpdates: Map(), remainingAmount: amount, remainingTranchesKeys: relevantTranches},
-                (acc, _) =>
-                    // Iterate only if there is still amount to exchange
-                    if (acc.remainingAmount == 0)
-                        acc
-                    else
-                        // find me the minumum tranche key
-                        val minTrancheKey = getMinimumTrancheKey(acc.remainingTranchesKeys) 
-                        
-                        // I want to know how much I can exchange in this tranche 
-                        val tranche = tranches.get(minTrancheKey)
-                        val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmount, tranche)
-                        // update the acc value
-                        {
-                            tranchesUpdates: acc.tranchesUpdates.set(minTrancheKey, exchangeInfo.trancheRemainingAmount),
-                            remainingAmount: acc.remainingAmount - exchangeInfo.exchangedTakerAmount,
-                            remainingTranchesKeys: acc.remainingTranchesKeys.setRemove(minTrancheKey)
-                        }                                    
-            )
-            {tranchesUpdates: foldResult.tranchesUpdates, remainingAmount: foldResult.remainingAmount}
+        )
+
+    
        
 
     // TRADE-RELATED FUNCTIONS
@@ -156,20 +151,82 @@ module utils {
     //  - a mapping from poolIds to amounts that should be swapped with this pool
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
-    pure def computeMakerOrderMatches(state: State, msg: PlaceLimitOrderMsg) : (PoolId->(int, int), TrancheKey-> int, int) = 
-    {
+    pure def limitOrderLiquidityIteration(
+        pair: TokenPair,
+        tranches: TrancheKey -> Tranche,
+        pools: PoolId -> Pool,
+        amount: int,
+        maxPriceTick: int,
+        maxAmountOut: int // in the first take, I will ignore this one
+    ): {remainingAmount: int, tranchesUpdates: TrancheKey -> int, poolUpdates: PoolId -> (int, int)} =
         
-        // first, exchange using the pools on the relevant tick (they are the first according to the sort)
-        val poolIterationRes = poolsLiquidityIteration(msg.tokenPair, true, state.pools, msg.amountIn, msg.tick)
-        val remainingAmountAfterPoolIteration = poolIterationRes.inAmount
+        // I need this for pools because they are stored only under normalized pairs
+        val normalizedPair = orderTokenPair(pair)
+        val isPairNormalized = pair == normalizedPair
+        
+        val relevantTranches = tranches.keys().filter(key => key.pair == pair and key.tick <= maxPriceTick)                
+        val relevantPools = pools.keys()
+                .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
+            
+        val relevantLiquiditySize = size(relevantTranches) + size(relevantPools)
 
-        // second, exchange using the tranches on the relevant tick
-        val trancheIterationRes = tranchesLiquidityIteration(msg.tokenPair, state.tranches, remainingAmountAfterPoolIteration, msg.tick)
-        (poolIterationRes.changes, Map(), -1)
+        // the purpose of this fold is to iterate as many times as there are keys. But the iteration is not
+        // happening over keys: instead, a minimum key is found in each iteration and the iteration continues.
+        val foldResult = 1.to(relevantLiquiditySize).fold(
+            {
+                tranchesUpdates: Map(), // TrancheKey -> int
+                poolUpdates: Map(), // PoolId -> (int, int)
+                remainingAmountToExchange: amount, 
+                remainingTranches: relevantTranches, 
+                remainingPools: relevantPools},
+            (acc, _) =>
+                // Iterate only if there is still amount to exchange
+                if (acc.remainingAmountToExchange == 0)
+                    acc
+                else
+                    // find me the minumum tranche key and the minimum pool key
+                    val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches)
+                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized)
+                    val minPoolReserveTick = computeReserveTick(minPoolKey.tick, isPairNormalized, minPoolKey.fee)
+                    // use the tranche key only if its price is strictly lower than that of the pool
+                    if (minTrancheKey.tick < minPoolReserveTick)                        
+                        // I want to know how much I can exchange in this tranche 
+                        val tranche = tranches.get(minTrancheKey)
+                        val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
+                        // update the acc value
+                        {
+                            tranchesUpdates: acc.tranchesUpdates.set(minTrancheKey, exchangeInfo.trancheRemainingAmount),
+                            remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
+                            remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
+                            ...acc
+                        } 
+                    // otherwise, I am using the pool
+                    else
+                        val pool = pools.get(minPoolKey)
+                        // tokenB is the one that the user will be getting
+                        val reservesTokenB = if (isPairNormalized) pool.reserves._2 else pool.reserves._1   
+                        val exchangeRate = priceFromTick(minPoolReserveTick)                            
+                        val requiredAmount = mulInt(exchangeRate, acc.remainingAmountToExchange).truncate()                        
+                        val userGetsFromPool = if (requiredAmount <= reservesTokenB) requiredAmount else  reservesTokenB
+                        // @audit-issue should we take into account numerical considerations here and instead of dividing,
+                        // calculate the opposite price tick and multiply?
+                        val userPutsIntoPool = intDivDec(userGetsFromPool, exchangeRate).truncate()
 
-        // finally, use the remainign amount to place a new maker order
+                        {
+                            remainingPools: acc.remainingPools.setRemove(minPoolKey),
+                            remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
+                            poolUpdates: acc.poolUpdates.set(
+                                minPoolKey, 
+                                if (isPairNormalized) (userPutsIntoPool, userGetsFromPool) else (userGetsFromPool, userPutsIntoPool)),
+                            ...acc
+                        }
+                        
+        )
+        {remainingAmount: foldResult.remainingAmountToExchange, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
+        
+        
 
-    }
+    
 
     pure def poolSwap(state: State, poolId: PoolId, amounts: (int,int)) : State = state
 
@@ -237,6 +294,19 @@ module utils {
             t1.id <= t2.id
         else
             t1.tick <= t2.tick
+
+    pure def poolLTE(p1: PoolId, p2: PoolId, isPairNormalized: bool): bool =
+        val tick1 = computeReserveTick(p1.tick, isPairNormalized, p1.fee)
+        val tick2 = computeReserveTick(p2.tick, isPairNormalized, p2.fee)
+        // if the ticks are the same
+        if (tick1 == tick2)
+            // then order by fee
+            p1.fee <= p2.fee
+        else
+            // otherwise, order by ticks
+            tick1 <= tick2
+
+    
 
       
 
