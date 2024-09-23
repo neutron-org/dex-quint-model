@@ -171,10 +171,99 @@ module Dex {
 
     
     pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
+        val fulfilledOrderInfo = limitOrderLiquidityIteration(
+            msg.tokenPair,            
+            before.tranches,
+            before.pools,
+            msg.amountIn,
+            msg.tick,
+            msg.maxAmountOut
+            
+        )
+        val updatedPools = fulfilledOrderInfo.poolUpdates
+        val updatedTranches = fulfilledOrderInfo.tranchesUpdates
+        val remainingAmount = fulfilledOrderInfo.remainingAmount
+
+        
         and{
-            placeLimitOrderMatchedPostcondition(before, msg, after),
-            placeLimitMakerOrderPostcondition(before, msg, after)
-        }  
+            // updated pools equal the 'after' state  
+            updatedPools.keys().forall(
+                poolId => after.pools.get(poolId).reserves == updatedPools.get(poolId)
+            ),
+            
+            // updated tranches equal the 'after' state
+            updatedTranches.keys().forall(
+                trancheKey => after.tranches.get(trancheKey).reservesMaker == updatedTranches.get(trancheKey)
+            ),
+
+            // summing up the total amount that the user received and checking if that is what the user has now
+            val isPairNormalized = tokenLT(msg.tokenPair._1, msg.tokenPair._2, TOKEN_NUM_VALUES)
+            val userGotFromPools = updatedPools.keys().fold(
+                0,
+                (acc, poolId) => 
+                val userGot = 
+                    if (isPairNormalized) 
+                        before.pools.get(poolId).reserves._2 - after.pools.get(poolId).reserves._2
+                    else
+                        before.pools.get(poolId).reserves._1 - after.pools.get(poolId).reserves._1
+                acc + userGot
+            )
+            val userGotFromTranches = updatedTranches.keys().fold(
+                0,
+                (acc, trancheKey) => 
+                val userGot = after.tranches.get(trancheKey).reservesMaker - before.tranches.get(trancheKey).reservesMaker
+                acc + userGot
+            )
+            val userDiff = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)
+            // user should have received the correct amount
+            userGotFromPools + userGotFromTranches == userDiff,
+
+            // if there was still some extra amount, it was added to limit orders
+            implies(            
+                remainingAmount > 0,
+                val trancheIndex = calculateTrancheIndex(msg.tokenPair, msg.tick, before.tranches.keys())
+                val trancheKey = {
+                    pair: msg.tokenPair,
+                    tick: msg.tick,
+                    id: trancheIndex
+                }
+
+                and{
+                    // the tranche key exists in the after state
+                    after.tranches.keys().contains(trancheKey),
+
+                // the amount in this tranched is increased by the remainingAmount
+                val totalMakerAmountBefore = if (before.tranches.keys().contains(trancheKey)) before.tranches.get(trancheKey).totalMaker else 0
+                after.tranches.get(trancheKey).totalMaker == totalMakerAmountBefore + remainingAmount,
+
+                // the user's shares now exists
+                after.tranchesShares.get(msg.creator).keys().contains(trancheKey),
+
+                // the tranche shares are updated
+                val totalSharesBefore = 
+                    if (before.tranches.keys().contains(trancheKey) and before.tranchesShares.get(msg.creator).keys().contains(trancheKey)) 
+                        before.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned 
+                    else 0
+                val sharesDiff = after.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned - 
+                                 totalSharesBefore
+                sharesDiff == remainingAmount                                                                    
+
+                }
+            ) 
+
+                
+
+            
+
+        }      
+        
+    
+        
+        
+
+
+        
+
 
     // 
     pure def placeLimitOrderMatchedPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
