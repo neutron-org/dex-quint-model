@@ -57,7 +57,7 @@ module types {
             receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
-            limitPriceTick: Option[int]
+            limitPrice: Dec
         }
 
     type PlaceLimitOrderMsg = {
@@ -65,7 +65,8 @@ module types {
             orderType: LimitOrderType,            
             // we have to choose tickIndex because the log operation is missing
             // @audit-info : If we will really need the log operation, what are our Quint options?
-            tick: TickIndex,
+            // TODO: use price amount here instead of the tick to follow the implementation faithfully
+            tick: TickIndex, 
             tokenPair: (Token, Token),
             amountIn: int,
             maxAmountOut: int,
@@ -154,7 +155,7 @@ module types {
         // In the implementation, these are connected to the block numbers. 
         lastTrancheIndex: int,
 
-        deposits: Addr -> PoolId -> (int, int),
+        deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
         poolWithdrawns: Addr -> PoolId -> (int, int)
 
 

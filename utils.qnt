@@ -164,6 +164,7 @@ module utils {
         val normalizedPair = orderTokenPair(pair)
         val isPairNormalized = pair == normalizedPair
         
+        // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         val relevantTranches = tranches.keys().filter(key => key.pair == pair and key.tick <= maxPriceTick)                
         val relevantPools = pools.keys()
                 .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
@@ -336,19 +337,11 @@ module utils {
         else 
             -tick + fee
 
-    // TODO: make the token0to1 clearer
-    // TODO: add ordering over minimum fee
-    pure def poolsLiquidityIteration(
-        pair: (Token, Token), 
-        token0to1: bool, 
-        pools: PoolId -> Pool, 
-        amount: int,
-        maxPriceTick: int
-        ): 
+    // @audit-issue Potentially, we need to add a break after we are past limitPrice --> checking with the dev team
+    pure def poolsLiquidityIteration(pair: (Token, Token), tokenA: Token, pools: PoolId -> Pool, amount: int): 
       {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
-        
-            
-        val relevantPools = pools.keys().filter(id => id.tokenPair == pair and id.tick <= maxPriceTick)
+        val token0to1 = pair._1 == tokenA
+        val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
         1.to(size(relevantPools)).fold(
             {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
             (acc, _) =>
@@ -370,6 +363,11 @@ module utils {
                 }
         )
 
+    pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int) :
+      PoolId -> {amounts: (int, int), swaps: bool} = 
+        poolIds.fold(userDeposits, (acc, id) => if (userDeposits.has(id) and userShares.get(id) > 0)
+                                                    acc.set(id, {swaps: true, ...userDeposits.get(id)})
+                                                else acc)
 
 
     // CANCEL RELATED FUNCTIONS
