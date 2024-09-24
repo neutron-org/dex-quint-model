@@ -33,6 +33,11 @@ module dec {
     // assumes that b!=0
     pure def div(a: Dec, b: Dec): Dec =
         (a._1 * b._2, a._2 * b._1)
+    pure def intDivDec(a: int, b: Dec): Dec =
+        div(
+            fromInt(a),
+            b
+        )
 
     pure def pow(a: Dec, n: int): Dec =
         if(a._1 == 0) a
