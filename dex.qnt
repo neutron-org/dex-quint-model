@@ -568,8 +568,48 @@ action withdrawLimitOrderAction: bool =
 
 
     pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
-        
-        state 
+        // 1) remove the tranche from the user's tranches
+        val updatedUsersTranches = state.tranchesShares.get(msg.creator).keys().exclude(Set(msg.trancheKey)).mapBy(
+            trancheKey => state.tranchesShares.get(msg.creator).get(trancheKey)
+        )
+
+        val tranche = state.tranches.get(msg.trancheKey)
+        // 2) update the user's coins
+        // 2a) calculate the amount of the tranche maker token that the user should receive back
+        val percentUnfilled = calculatePercentUnfilled(tranche)
+        val cancelAmountMakerToken = mulInt(
+            percentUnfilled,
+            state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned
+        ).truncate()
+        val updatedUserCoinsMaker = state.coins.get(msg.creator).get(msg.trancheKey.pair._1) + cancelAmountMakerToken
+        // 2b) calculate the amount of the tranche taker token that the user should receive back (withdraw equivalent)
+        val percentFilled = calculatePercentFilled(tranche)     
+        val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche, state.tranchesShares.get(msg.creator))       
+        val cancelAmountTakerToken = 
+            computeWithdrawTrancheAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche.totalTaker)
+        val updatedUserCoinsTaker = state.coins.get(msg.creator).get(msg.trancheKey.pair._2) + cancelAmountTakerToken
+       
+        // 3) update the tranche reserves
+        val updatedTranche = {
+            reservesMaker: tranche.reservesMaker - cancelAmountMakerToken,
+            totalMaker: tranche.totalMaker - state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned,
+            reservesTaker: tranche.reservesTaker - cancelAmountTakerToken,
+            totalTaker: tranche.totalTaker - cancelAmountTakerToken,
+            ...tranche
+        }    
+        // updated state
+        {
+            tranchesShares: state.tranchesShares.set(msg.creator, updatedUsersTranches),
+            coins: state.coins.set(
+                msg.creator,
+                state.coins.get(msg.creator)
+                    .set(msg.trancheKey.pair._1, updatedUserCoinsMaker)
+                    .set(msg.trancheKey.pair._2, updatedUserCoinsTaker)
+                ),
+            tranches: state.tranches.set(msg.trancheKey, updatedTranche),
+            ... state
+        }
+        // state 
 
 
      action cancelLimitOrderAction: bool =
