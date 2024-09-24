@@ -151,6 +151,7 @@ module utils {
     //  - a mapping from poolIds to amounts that should be swapped with this pool
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
+    // @audit-issue TODO types of limit orders
     pure def limitOrderLiquidityIteration(
         pair: TokenPair,
         tranches: TrancheKey -> Tranche,
@@ -160,8 +161,8 @@ module utils {
         maxAmountOut: int // in the first take, I will ignore this one
     ): {
         remainingAmount: int, 
-        tranchesUpdates: TrancheKey -> {makerReservesAmountDiff: int, takerReservesAmountDiff: int}, 
-        poolUpdates: PoolId -> {token0DiffAmount: int, token1DiffAmount: int}
+        tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
+        poolUpdates: PoolId -> PoolUpdateDiff
         } =
         
         // I need this for pools because they are stored only under normalized pairs
@@ -203,7 +204,7 @@ module utils {
                         {
                             tranchesUpdates: acc.tranchesUpdates.set(
                                 minTrancheKey, 
-                                {makerReservesAmountDiff: -exchangeInfo.exchangedMakerAmount, takerReservesAmountDiff: exchangeInfo.exchangedTakerAmount}),
+                                {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
                             remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
                             ...acc
@@ -226,9 +227,9 @@ module utils {
                             poolUpdates: acc.poolUpdates.set(
                                 minPoolKey, 
                                 if (isPairNormalized) 
-                                    {token0DiffAmount: userPutsIntoPool, token1DiffAmount: -userGetsFromPool} 
+                                    {token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool} 
                                 else 
-                                    {token0DiffAmount: -userGetsFromPool, token1DiffAmount: userPutsIntoPool}
+                                    {token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool}
                                 ),
                             ...acc
                         }
@@ -240,14 +241,13 @@ module utils {
 
     
 
-    pure def poolSwap(state: State, poolId: PoolId, amounts: (int,int)) : State = state
+    pure def poolSwap(state: State, poolId: PoolId, poolUpdateDiff: PoolUpdateDiff) : State = state
 
-    pure def trancheTrade(state: State, trancheKey: TrancheKey, amount: int) : State = state
+    pure def trancheTrade(state: State, trancheKey: TrancheKey, trancheUpdateDiff: TrancheUpdateDiff) : State = state
 
     pure def createNewTranche(state: State, msg: PlaceLimitOrderMsg, amount: int) : State = state
 
     // DEPOSIT RELATED FUNCTIONS
-    // @audit-info there's a Quint error I cannot resolve
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
       val inAmount0 = if (reserves._2 > 0)
                         min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())

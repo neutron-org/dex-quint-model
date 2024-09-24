@@ -129,6 +129,9 @@ module types {
         shares: int
     }
 
+    type TrancheUpdateDiff = {makerReservesDiff: int, takerReservesDiff: int}
+    type PoolUpdateDiff = {token0Diff: int, token1Diff: int}
+
     // @audit-issue We must make sure that `Shares` always contains all the Addr (Addr is not removed and is initialized)
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> {

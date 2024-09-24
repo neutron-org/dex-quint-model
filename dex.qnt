@@ -220,8 +220,8 @@ module Dex {
             // updated pools equal the 'after' state, the rest is unchanged
             before.pools.keys().forall(poolId => 
                 if (poolsUpdateInfo.keys().contains(poolId))
-                    val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdateInfo.get(poolId)._1,
-                                          before.pools.get(poolId).reserves._2 + poolsUpdateInfo.get(poolId)._2)
+                    val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdateInfo.get(poolId).token0Diff,
+                                          before.pools.get(poolId).reserves._2 + poolsUpdateInfo.get(poolId).token1Diff)
                     after.pools.get(poolId).reserves == updatedReserves
                 else
                     before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
@@ -232,8 +232,8 @@ module Dex {
                 if (tranchesUpdateInfo.keys().contains(trancheKey))
                     before.tranches.get(trancheKey) ==
                     {
-                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesAmountDiff,
-                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesAmountDiff,
+                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
+                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
                         ...before.tranches.get(trancheKey),
                     }
                 else
@@ -247,16 +247,16 @@ module Dex {
                 (acc, poolId) => 
                 val userGot = 
                     if (isPairNormalized) 
-                        abs(poolsUpdateInfo.get(poolId)._2)
+                        abs(poolsUpdateInfo.get(poolId).token1Diff)
                     else
-                        abs(poolsUpdateInfo.get(poolId)._1)                
+                        abs(poolsUpdateInfo.get(poolId).token0Diff)                
                 acc + userGot
             )
             val userGotFromTranches = tranchesUpdateInfo.keys().fold(
                 0,
                 (acc, trancheKey) => 
                 // the abs is because of the way the diff is expressed as negative to signify that the amount was taken from the tranche
-                val userGot = abs(tranchesUpdateInfo.get(trancheKey).takerReservesAmountDiff)
+                val userGot = abs(tranchesUpdateInfo.get(trancheKey).takerReservesDiff)
                 
                 acc + userGot
             )
@@ -437,8 +437,7 @@ module Dex {
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
       val token0to1: bool = pair._1 == msg.tokenPair._1
-      val maxPriceTick: int = unwrapTick(msg.limitPriceTick)
-      val resultIteration = poolsLiquidityIteration(pair, token0to1, before.pools, inAmount, maxPriceTick)
+      val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, before.pools, inAmount)
       val outAmount = resultIteration.outAmount
       val usedAmount = inAmount - resultIteration.inAmount
       // ** State changes validation **
