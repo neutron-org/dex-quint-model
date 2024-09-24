@@ -53,11 +53,13 @@ module Dex {
       //ok(state)
     }
 
-    
+    pure def withdrawPoolPrecondition(state: State, msg: WithdrawPoolMsg): bool = 
+        true
 
     action withdrawAction(msg: WithdrawPoolMsg): bool = {
       val result = withdrawPool(state, msg)
       all {
+        withdrawPoolPrecondition(state, msg),
         require(result.error=="nil"),
         state' = result.state,
         postconditionOK' = withdrawPoolPostcondition(state, result.state, msg)
@@ -451,7 +453,27 @@ module Dex {
     
     //   CH: WITHDRAWING PROCEEDS OF A TRANCHE
 
-    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State = state
+    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
+        val tranche = state.tranches.get(msg.trancheKey)
+        val userTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)
+        val withdrawnShares: int =
+            calculatePercentFilled(tranche).mulInt(userTrancheShares.sharesOwned).truncate() - userTrancheShares.sharesWithdrawn
+        val priceTakerToMaker = priceFromTick(tranche.tick)
+        val withdrawnAmountTakerToken: int = intDivDec(withdrawnShares, priceTakerToMaker).truncate()
+        
+        // 1) user's balance needs to be updated
+        val updatedUsersCoins = state.coins.get(msg.creator).get(tranche.takerDenomination) + withdrawnAmountTakerToken
+        // 2) the reserves taker denom need to be updated
+        val updatedTrancheTakerReserves = tranche.reservesTaker - withdrawnAmountTakerToken
+        // 3) updating the user's shares: increasing the withdrawn shares
+        val updatedUserShares = {sharesWithdrawn: userTrancheShares.sharesWithdrawn + withdrawnShares, ...userTrancheShares}
+        {
+            coins: state.coins.set(msg.creator, state.coins.get(msg.creator).set(tranche.takerDenomination, updatedUsersCoins)),
+            tranches: state.tranches.set(msg.trancheKey, {reservesTaker: updatedTrancheTakerReserves, ...tranche}),
+            tranchesShares: state.tranchesShares.set(msg.creator, 
+                state.tranchesShares.get(msg.creator).set(msg.trancheKey, updatedUserShares)),
+            ...state
+        }
     
     pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
         val withdrawnShares: int = computeWithdrawTrancheShares(
