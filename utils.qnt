@@ -153,7 +153,7 @@ module utils {
     //  - an integer saying how much of the order amount is still remaining
     // @audit-issue TODO types of limit orders
     // @audit-issue TODO call it swap
-    pure def limitOrderLiquidityIteration(
+    pure def swap(
         pair: TokenPair,
         tranches: TrancheKey -> Tranche,
         pools: PoolId -> Pool,
@@ -366,11 +366,11 @@ module utils {
                 acc 
     )
 
-    pure def computeReserveTick(tick: TickIndex, token0to1: bool, fee: Fee): TickIndex = 
+    pure def computeReserveTick(poolTick: TickIndex, token0to1: bool, fee: Fee): TickIndex = 
         if (token0to1) 
-            tick + fee 
+            poolTick + fee 
         else 
-            -tick + fee
+            -poolTick + fee
 
     // @audit-issue Potentially, we need to add a break after we are past limitPrice --> checking with the dev team
     pure def poolsLiquidityIteration(pair: (Token, Token), tokenA: Token, pools: PoolId -> Pool, amount: int): 
