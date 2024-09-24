@@ -468,10 +468,13 @@ module Dex {
         // 3) updating the user's shares: increasing the withdrawn shares
         val updatedUserShares = {sharesWithdrawn: userTrancheShares.sharesWithdrawn + withdrawnShares, ...userTrancheShares}
         {
-            coins: state.coins.set(msg.creator, state.coins.get(msg.creator).set(tranche.takerDenomination, updatedUsersCoins)),
+            coins: state.coins.setBy(
+                msg.creator, 
+                old => old.set(tranche.takerDenomination, updatedUsersCoins)),
             tranches: state.tranches.set(msg.trancheKey, {reservesTaker: updatedTrancheTakerReserves, ...tranche}),
-            tranchesShares: state.tranchesShares.set(msg.creator, 
-                state.tranchesShares.get(msg.creator).set(msg.trancheKey, updatedUserShares)),
+            tranchesShares: state.tranchesShares.setBy(
+                msg.creator, 
+                old => old.set(msg.trancheKey, updatedUserShares)),
             ...state
         }
     
