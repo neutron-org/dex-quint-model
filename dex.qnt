@@ -363,13 +363,22 @@ module Dex {
     }
 
     pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): bool =
-      // Assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
       val inAmount = msg.amount
-      val pair =  orderTokenPair(msg.tokenPair)
-      val token0to1: bool = pair._1 == msg.tokenPair._1
-      val resultIteration = swap(msg.tokenPair, before.tranches, before.pools, inAmount, msg.limitPriceTick, 0)
-      val outAmount = resultIteration.outAmount
-      val usedAmount = inAmount - resultIteration.remainingAmount
+      val fulfilledOrderInfo = swap(
+            msg.tokenPair,            
+            before.tranches,
+            before.pools,
+            inAmount,
+            msg.limitPriceTick,
+            0
+            
+        )
+        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
+        val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
+        val remainingAmount = fulfilledOrderInfo.remainingAmount
+        val outAmount = fulfilledOrderInfo.outAmount
+        val usedAmount = inAmount - remainingAmount
+
       // ** State changes validation **
       
       and{
@@ -377,9 +386,9 @@ module Dex {
         after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount,
         after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount,
         // Reserves are updated
-        validatePoolsUpdates(before, after, resultIteration.poolUpdates),
+        validatePoolsUpdates(before, after, poolsUpdateInfo),
         // Tranches changes
-        validateTrachesUpdates(before, after, resultIteration.tranchesUpdates),
+        validateTrachesUpdates(before, after, tranchesUpdateInfo),
         // ** Specification invariants **
         // Invariant Swap.1
         val exchangeRate = priceFromTick(msg.limitPriceTick)
@@ -387,7 +396,7 @@ module Dex {
         outAmount >= minAmount,
         inAmount >= usedAmount,
         // Invariant LP.3
-        resultIteration.poolUpdates.keys().forall(id =>
+        poolsUpdateInfo.keys().forall(id =>
             val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
             val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
             poolValueAfter > poolValueBefore
