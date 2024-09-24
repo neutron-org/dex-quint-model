@@ -354,16 +354,16 @@ module Dex {
     
     //    CH: SWAPPING
 
-    action swapAction(msg: SwapMsg): bool = {
-      val result = swap(state, msg)
+    action singlehopSwapAction(msg: SwapMsg): bool = {
+      val result = singlehopSwap(state, msg)
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = swapPostcondition(state, result.state, msg)
+        postconditionOK' = singlehopSwapPostcondition(state, result.state, msg)
       }
     }
     
-    pure def swap(state: State, msg: SwapMsg) : Result = {
+    pure def singlehopSwap(state: State, msg: SwapMsg) : Result = {
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
       val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, state.pools, inAmount)
@@ -378,7 +378,7 @@ module Dex {
       //ok(state)
     }
 
-    pure def postconditionSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
+    pure def postconditionsinglehopSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
       if (poolPair._1 == msgPair._1)       
         poolAfter.reserves._1 == poolBefore.reserves._1 + amounts._1
         and
@@ -390,7 +390,7 @@ module Dex {
         poolAfter.reserves._1 == poolBefore.reserves._2 + amounts._2
 
 
-    pure def swapPostcondition(before: State, after: State, msg: SwapMsg): bool =
+    pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): bool =
       // Assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
@@ -409,7 +409,7 @@ module Dex {
             id => 
             val poolBefore = before.pools.get(id)
             val poolAfter = after.pools.get(id)
-            postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.changes.get(id))
+            postconditionsinglehopSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.changes.get(id))
         ),
         // ** Specification invariants **
         // Invariant Swap.1
