@@ -259,14 +259,35 @@ module utils {
       (inAmount0, inAmount1)
     }
 
-    // @audit-info when to truncate?
+    // LP.2 in specification invariants
+    // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
+    pure def computeAutoswapFee(residualAmounts: (int, int), tick: TickIndex): Dec =
+        computeDepositValue(residualAmounts, tick).fromInt().mul(one.sub(priceFromTick(tick)))
+
+    // @audit-info not sure if to compute depositValue when autoswapping I should use the full amount in the
+    // deposit message or just the one computed by computeAmountsDeposit
     // can totalPoolValue be 0? Invariant candidate!
-    // LP.1 in specification invariants
-    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int): int =
+    // can autoswapFee > depositValue? Invariant candidate!
+    // 
+    // LP.1 and LP.2 in specification invariants
+    // shareValue = totalPreexistingShares / (totalPoolValue + autswapFee)
+    // sharesMinted = (depositValue - autoswapFee) * shareValue
+    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int, autoswapFee: Dec): int =
       val poolValue = computePoolValue(reserves, tick)
-      val shareValue = existingShares.fromInt().div(poolValue.fromInt()).truncate()
+      val shareValue = existingShares.fromInt().div(poolValue.fromInt().add(autoswapFee)).truncate()
       val depositValue = computeDepositValue(amounts, tick)
-      depositValue * shareValue
+      depositValue.fromInt().sub(autoswapFee).mul(shareValue.fromInt()).truncate()
+
+    // This specifies the implementation
+    // fee = (upperTickIndex - lowerTickIndex) / 2
+    // residualShares = residualAmounts0 * (Price1to0Center / Price1to0Upper) + residualAmounts1 * Price1to0Lower
+    pure def computeResidualShares(residualAmounts: (int, int), id: PoolId): int = 
+      val upperTickIndex = id.tick + id.fee
+      val lowerTickIndex = -id.tick + id.fee
+      val fee = (upperTickIndex - lowerTickIndex) / 2
+      val amount0Discount = priceFromTick(-fee)
+      val priceLowerTakerToMaker = priceFromTick(-id.tick + id.fee)
+      amount0Discount.mul(residualAmounts._1.fromInt()).add(priceLowerTakerToMaker.mul(residualAmounts._2.fromInt())).truncate()
 
     // WITHDRAW TRANCHE RELATED FUNCTIONS
     pure def computeWithdrawTrancheShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =

@@ -140,9 +140,13 @@ module Dex {
       val reservesAfter = after.pools.get(poolId).reserves
       val sharesBefore = if (before.pools.has(poolId)) 0 else before.pools.get(poolId).shares
       val sharesAfter = after.pools.get(poolId).shares
-       //@audit-info Why one may not be allowed to deposit the full amount? ratios?
-      val inAmounts = computeAmountsDeposit(reservesBefore, amounts)
-      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, poolId.tick)
+      // Deposit and shares computation considering the optional autoswap
+      val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
+      val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+      val inAmounts = if (msg.autoswap) amounts
+                      else inAmountsBeforeAutoswap
+      val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick) else zero
+      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick, autoswapFee)
       // Reserves are updated
       reservesAfter._1 == reservesBefore._1 + inAmounts._1 and 
       reservesAfter._2 == reservesBefore._2 + inAmounts._2 and

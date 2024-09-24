@@ -41,6 +41,7 @@ module types {
             amountPair: (int, int),
             tick: TickIndex,
             fee: Fee,
+            autoswap: bool
         }
 
     type WithdrawPoolMsg = {
