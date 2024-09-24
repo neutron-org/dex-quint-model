@@ -311,57 +311,11 @@ module Dex {
         
 
 
-    // 
-    pure def placeLimitOrderMatchedPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
-        true
-
-    // TODO: change this: make it a general postcondition for the whole placeLimitOrder
-    // This is a postcondition only for the part of placing an order that is a maker order, creating a new tranche
-    pure def placeLimitMakerOrderPostcondition(
-        before: State, 
-        msg: PlaceLimitOrderMsg,
-        after: State) : bool = true
+    
+    
 
         
-        // val trancheIndex = calculateTrancheIndex(msg.tokenPair, msg.tick, before.tranches.keys())
-        // val trancheKey = {
-        //     pair: msg.tokenPair,
-        //     tick: msg.tick,
-        //     id: trancheIndex
-        // }
-        // val amountIn = computeMakerOrderMatches(before, msg)._3
-        // and {
-        //     // the tranche key exists in the after state
-        //     after.tranches.keys().contains(trancheKey),
-        
-        //     // The share account per user and the tranche is there, and its values are updated correctly
-        //     val userAccountBefore = before.tranchesShares.get(msg.creator)
-        //     val userAccounotAfter = after.tranchesShares.get(msg.creator)
-            
-        //     and {
-        //         userAccounotAfter.keys().contains(trancheKey),
-        //         // the sharesOwned is increased: the split is depending on whether the user had already something in the
-        //         // tranche or not
-        //         userAccounotAfter.get(trancheKey).sharesOwned ==
-        //             if (userAccountBefore.keys().contains(trancheKey)) {
-        //                 userAccountBefore.get(trancheKey).sharesOwned + amountIn
-        //             } else {
-        //                 amountIn
-        //             },
-                
-        //         val increasedTrancheMaker =
-        //             // the difference in value of totalMaker in the pre and post state. 
-        //             // The split is based on whether the tranche existed before or was newly created
-        //             if (before.tranches.keys().contains(trancheKey)) {
-                        
-        //                 after.tranches.get(trancheKey).totalMaker - before.tranches.get(trancheKey).totalMaker
-        //             } else {
-        //                 // just what is in the after state
-        //                 after.tranches.get(trancheKey).totalMaker
-        //             }
-        //             increasedTrancheMaker == amountIn
-        //     }   
-        // }
+      
         
         
 

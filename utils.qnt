@@ -152,6 +152,7 @@ module utils {
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
     // @audit-issue TODO types of limit orders
+    // @audit-issue TODO call it swap
     pure def limitOrderLiquidityIteration(
         pair: TokenPair,
         tranches: TrancheKey -> Tranche,
