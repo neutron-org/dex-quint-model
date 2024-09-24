@@ -161,7 +161,8 @@ module utils {
         maxPriceTick: int,
         maxAmountOut: int // in the first take, I will ignore this one
     ): {
-        remainingAmount: int, 
+        remainingAmount: int,
+        outAmount: int, 
         tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
         poolUpdates: PoolId -> PoolUpdateDiff
         } =
@@ -171,6 +172,7 @@ module utils {
         val isPairNormalized = pair == normalizedPair
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
+        // checked: it should be both.
         val relevantTranches = tranches.keys().filter(key => key.pair == pair and key.tick <= maxPriceTick)                
         val relevantPools = pools.keys()
                 .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
@@ -183,7 +185,8 @@ module utils {
             {
                 tranchesUpdates: Map(), 
                 poolUpdates: Map(), 
-                remainingAmountToExchange: amount, 
+                remainingAmountToExchange: amount,
+                outAmount: 0,
                 remainingTranches: relevantTranches, 
                 remainingPools: relevantPools},
             (acc, _) =>
@@ -207,6 +210,7 @@ module utils {
                                 minTrancheKey, 
                                 {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
+                            outAmount: acc.outAmount + exchangeInfo.exchangedTakerAmount,
                             remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
                             ...acc
                         } 
@@ -225,6 +229,7 @@ module utils {
                         {
                             remainingPools: acc.remainingPools.setRemove(minPoolKey),
                             remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
+                            outAmount: acc.outAmount + userGetsFromPool,
                             poolUpdates: acc.poolUpdates.set(
                                 minPoolKey, 
                                 if (isPairNormalized) 
@@ -236,7 +241,7 @@ module utils {
                         }
                         
         )
-        {remainingAmount: foldResult.remainingAmountToExchange, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
+        {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
         
         
 

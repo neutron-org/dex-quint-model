@@ -58,7 +58,7 @@ module types {
             receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
-            limitPrice: Dec
+            limitPriceTick: TickIndex
         }
 
     type PlaceLimitOrderMsg = {
