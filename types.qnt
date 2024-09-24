@@ -66,6 +66,7 @@ module types {
             // we have to choose tickIndex because the log operation is missing
             // @audit-info : If we will really need the log operation, what are our Quint options?
             tick: TickIndex, 
+            // semantics: I want to exchange tokenPair_1 for tokenPair_2 ==> TODO: make this explicit in the type
             tokenPair: (Token, Token),
             amountIn: int,
             maxAmountOut: int,
@@ -152,10 +153,7 @@ module types {
         // @audit-info could that cause any issue down the line?
         blockNumber: BlockTime,
         poolShares: Addr -> PoolId -> int,
-        pools: PoolId -> Pool,
-
-        // In the implementation, these are connected to the block numbers. 
-        lastTrancheIndex: int,
+        pools: PoolId -> Pool,        
 
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
         poolWithdrawns: Addr -> PoolId -> (int, int)

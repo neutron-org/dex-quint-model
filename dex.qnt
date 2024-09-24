@@ -179,25 +179,49 @@ module Dex {
             msg.maxAmountOut
             
         )
-        val poolsToSwap = fulfilledOrderInfo.poolUpdates
-        val tranchesToTrade = fulfilledOrderInfo.tranchesUpdates
+        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
+        val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
         val remainingAmount = fulfilledOrderInfo.remainingAmount
+        val userReceived = fulfilledOrderInfo.userReceives
 
-        // 1) iterated swaps over relevant pools
-        val stateAfterPoolSwaps = poolsToSwap.keys().fold(
-            state,
-            (state, poolId) => poolSwap(state, poolId, poolsToSwap.get(poolId))
+        // 1) update the pools states
+        val updatedPools = state.pools.keys().mapBy(poolId =>
+            if (poolsUpdateInfo.keys().contains(poolId))
+                val updatedReserves = (state.pools.get(poolId).reserves._1 + poolsUpdateInfo.get(poolId).token0Diff,
+                                      state.pools.get(poolId).reserves._2 + poolsUpdateInfo.get(poolId).token1Diff)
+                {
+                    reserves: updatedReserves,
+                    shares: state.pools.get(poolId).shares
+                }
+            else
+                state.pools.get(poolId)            
+        )
+        
+
+        // 2) update the tranches states
+        val tradeUpdatedTranches = state.tranches.keys().mapBy(
+            trancheKey =>
+            if (tranchesUpdateInfo.keys().contains(trancheKey))
+                {
+                    reservesMaker: state.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
+                    reservesTaker: state.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                    isFresh: false,
+                    ...state.tranches.get(trancheKey),
+                }
+            else
+                state.tranches.get(trancheKey)
         )
 
-        // 2) iterated trades over relevant tranches
-        val stateAfterTrancheTrades = tranchesToTrade.keys().fold(
-            stateAfterPoolSwaps,
-            (state, trancheKey) => trancheTrade(state, trancheKey, tranchesToTrade.get(trancheKey))
-        )
+        val tradeUpdatedState = {
+            tranches: tradeUpdatedTranches,
+            pools: updatedPools,
+            ...state
+        }
+        
 
         // 3) if there is still some amount left, we need to create a new tranche
-        createNewTranche(stateAfterTrancheTrades, msg, remainingAmount)
-
+        handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount)
+        
     
 
     
@@ -544,7 +568,7 @@ action withdrawLimitOrderAction: bool =
 
 
     pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
-        // TODO: unfinished
+        
         state 
 
 

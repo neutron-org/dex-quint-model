@@ -163,7 +163,8 @@ module utils {
     ): {
         remainingAmount: int, 
         tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
-        poolUpdates: PoolId -> PoolUpdateDiff
+        poolUpdates: PoolId -> PoolUpdateDiff,
+        userReceives: int
         } =
         
         // I need this for pools because they are stored only under normalized pairs
@@ -185,7 +186,8 @@ module utils {
                 poolUpdates: Map(), 
                 remainingAmountToExchange: amount, 
                 remainingTranches: relevantTranches, 
-                remainingPools: relevantPools},
+                remainingPools: relevantPools,
+                userReceives: 0},
             (acc, _) =>
                 // Iterate only if there is still amount to exchange
                 if (acc.remainingAmountToExchange == 0)
@@ -208,6 +210,7 @@ module utils {
                                 {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
                             remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
+                            userReceives: acc.userReceives + exchangeInfo.exchangedMakerAmount,
                             ...acc
                         } 
                     // otherwise, I am using the pool
@@ -232,21 +235,94 @@ module utils {
                                 else 
                                     {token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool}
                                 ),
+                            userReceives: acc.userReceives + userGetsFromPool,
                             ...acc
                         }
                         
         )
-        {remainingAmount: foldResult.remainingAmountToExchange, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
+        {remainingAmount: foldResult.remainingAmountToExchange, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates, userReceives: foldResult.userReceives}
         
         
 
     
 
-    pure def poolSwap(state: State, poolId: PoolId, poolUpdateDiff: PoolUpdateDiff) : State = state
+    pure def poolSwap(state: State, poolId: PoolId, poolUpdateDiff: PoolUpdateDiff) : State = 
+        state
 
     pure def trancheTrade(state: State, trancheKey: TrancheKey, trancheUpdateDiff: TrancheUpdateDiff) : State = state
 
-    pure def createNewTranche(state: State, msg: PlaceLimitOrderMsg, amount: int) : State = state
+    pure def handleRemainingLimitOrderAmount(state: State, msg: PlaceLimitOrderMsg, amount: int) : State =
+        val tranches = state.tranches
+        val tokenPair = msg.tokenPair
+        val tick = msg.tick
+        val shares = state.tranchesShares
+        val creator = msg.creator
+        if (amount <= 0)
+            state
+        else
+            // looking for an existing tranche under which we would place the maker order 
+            val appropriateTrancheKeys = tranches.keys().filter(key => key.pair == tokenPair and key.tick == tick and tranches.get(key).isFresh)            
+            val tranchesAndSharesUpdate = 
+                if (size(appropriateTrancheKeys) > 0)
+                    val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys)                
+                    val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
+                    val updatedShares = shares.setBy(
+                        creator,
+                        (old => old.set(
+                            trancheKey, 
+                            {sharesOwned: old.get(trancheKey).sharesOwned + amount, ...old.get(trancheKey)}
+                            )
+                        )
+                    )
+                    (updatedTranches, updatedShares)
+
+                
+                else
+                    val maxTrancheId = tranches.keys().fold(
+                        0,
+                        (acc, key) => if (key.id > acc) key.id else acc
+                    )
+                    // in the implementation, the id is connected to the block number. Here, we use increasing values
+                    val newKey = {pair: tokenPair, tick: tick, id: maxTrancheId + 1}
+                    val newTranche = {
+                        isFresh: true,
+                        reservesMaker: amount,
+                        reservesTaker: 0,
+                        totalMaker: amount,
+                        totalTaker: 0,
+                        tick: tick,
+                        // TODO: this is not implemented
+                        expirationTime: -1,
+                        trancheKey: newKey,
+                        makerDenomination: tokenPair._1,
+                        takerDenomination: tokenPair._2
+                    }
+                    val newShareAccount = {sharesOwned: amount, sharesWithdrawn: 0}
+
+                    
+                    val updatedTranches = tranches.put(newKey, newTranche)
+                    val updatedShares = shares.setBy(
+                            creator,
+                            old => old.put(newKey, newShareAccount)
+                        )
+                    (updatedTranches, updatedShares)
+                // returning the state
+                val updatedCoins = state.coins.setBy(
+                    msg.creator, 
+                    // we spent all coins! This is specific for the Good-Til-Cancelled. TODO: handle other types
+                    old => old.set(msg.tokenPair._1, 0)                    
+                    )
+                {
+                    tranches: tranchesAndSharesUpdate._1,
+                    tranchesShares: tranchesAndSharesUpdate._2,
+                    coins: updatedCoins,
+                    ...state
+                }
+                
+                
+
+
+
 
     // DEPOSIT RELATED FUNCTIONS
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
