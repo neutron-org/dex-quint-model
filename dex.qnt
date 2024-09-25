@@ -332,6 +332,7 @@ module Dex {
             )
     
     pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
+        // TODO: incorporate also here different types of orders (as it was done in the action)
         val fulfilledOrderInfo = swap(
             msg.tokenIn,
             msg.tokenOut,
@@ -436,7 +437,10 @@ module Dex {
 
     action placeLimitOrderAction: bool =
         nondet c = oneOf(CREATORS)
-        nondet o = oneOf(ORDER_TYPES)
+        nondet o_init = oneOf(ORDER_TYPES)
+        nondet block_delta = oneOf(1.to(MAX_FUTURE_BLOCKS))
+        val o = if (o_init == GoodTillTime(-1)) GoodTillTime(state.blockNumber + block_delta) else o_init
+
         nondet t = oneOf(TICKS)
         nondet tokenIn = oneOf(TOKENS)
         nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn)) 
@@ -461,7 +465,11 @@ module Dex {
 
         all {
             state' = res.state,
-            postconditionOK' = placeLimitOrderPostcondition(state, limitOrderMsg, res.state),
+            // @audit-info TODO: this check is until Postcondition is updated to support different types
+            postconditionOK' = 
+            if (limitOrderMsg.orderType == GoodTillCancelled ) 
+                placeLimitOrderPostcondition(state, limitOrderMsg, res.state)
+            else true,
             actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
             actionSuccess' = res.error == "nil"
         }   
