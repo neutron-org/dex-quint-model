@@ -164,7 +164,8 @@ module utils {
         pools: PoolId -> Pool,
         amount: int,
         maxPriceTick: int,
-        maxAmountOut: int // in the first take, I will ignore this one
+        // TODO: maxAmountOut parameter not taken into account
+        maxAmountOut: int 
     ): {
         remainingAmount: int,
         outAmount: int, 

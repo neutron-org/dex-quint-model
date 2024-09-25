@@ -609,9 +609,18 @@ module Dex {
 
     
 action withdrawLimitOrderAction: bool = 
-        nondet creator = oneOf(state.tranchesShares.keys())
-        // TODO: add a restriction that it can only apply to "real" existing tranches
-        nondet trancheKey = oneOf(state.tranchesShares.get(creator).keys())
+    val creatorsWithTrancheKeys = CREATORS.fold(
+        Map(),
+        (acc, creator) => 
+            if (state.tranchesShares.keys().contains(creator) and state.tranchesShares.get(creator).keys().size() > 0)
+                acc.put(creator, state.tranchesShares.get(creator).keys())
+            else
+                acc
+    )
+    all {
+        require(size(creatorsWithTrancheKeys.keys()) > 0),
+        nondet creator = oneOf(creatorsWithTrancheKeys.keys())
+        nondet trancheKey = oneOf(creatorsWithTrancheKeys.get(creator))
         val withdrawLimitOrderMsg = {
             creator: creator,
             trancheKey: trancheKey
@@ -629,8 +638,9 @@ action withdrawLimitOrderAction: bool =
             postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res.state),
             actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)},
             actionSuccess' = res.error == "nil"
-            
         }
+    }
+
     
     
     //    CH: CANCELLING A LIMIT ORDER
@@ -743,21 +753,26 @@ action withdrawLimitOrderAction: bool =
         ok(updatedState)
 
 
-     action cancelLimitOrderAction: bool =
-        // take one of the creators that have some tranches
-        nondet creator = oneOf(state.tranchesShares.keys().filter(c => state.tranchesShares.get(c).keys().size() > 0))
-        nondet trancheKey = oneOf(state.tranchesShares.get(creator).keys())
-        val cancelLimitOrderMsg = {
-            creator: creator,
-            trancheKey: trancheKey
-        }
-        val res = cancelLimitOrder(state, cancelLimitOrderMsg)
-        all{
-            state' = res.state,
-            postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res.state),
-            actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)},
-            actionSuccess' = res.error == "nil"
-        }
+     action cancelLimitOrderAction: bool = 
+        val nontrivialTranchesSharesKeys = state.tranchesShares.keys()
+            .filter(creator => state.tranchesShares.get(creator).keys().size() > 0)
+        all{        
+            require(nontrivialTranchesSharesKeys.size() > 0),
+            // take one of the creators that have some tranches
+            nondet creator = oneOf(nontrivialTranchesSharesKeys)
+            nondet trancheKey = oneOf(state.tranchesShares.get(creator).keys())
+            val cancelLimitOrderMsg = {
+                creator: creator,
+                trancheKey: trancheKey
+            }
+            val res = cancelLimitOrder(state, cancelLimitOrderMsg)
+            all{
+                state' = res.state,
+                postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res.state),
+                actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)},
+                actionSuccess' = res.error == "nil"
+            }
+    }
 
 
     

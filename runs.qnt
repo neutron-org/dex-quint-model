@@ -25,7 +25,7 @@ module runs {
                 tick: 19460,
                 maxAmountOut: -1
             }
-            val updatedState = placeLimitOrder(state, bobsOrder)
+            val updatedState = placeLimitOrder(state, bobsOrder).state
             all{
                 state' = updatedState,
                 postconditionOK' = placeLimitOrderPostcondition(state, bobsOrder, updatedState),
@@ -51,7 +51,7 @@ module runs {
                 tick: 20000,
                 maxAmountOut: -1
             }
-            val updatedState = placeLimitOrder(state, alicesOrder)
+            val updatedState = placeLimitOrder(state, alicesOrder).state
             
             all{
                 state' = updatedState,
@@ -77,7 +77,7 @@ module runs {
                 tick: 20000,
                 maxAmountOut: -1
             }
-            val updatedState = placeLimitOrder(state, alicesOrder)            
+            val updatedState = placeLimitOrder(state, alicesOrder).state            
             all{
                 state' = updatedState,
                 postconditionOK' = placeLimitOrderPostcondition(state, alicesOrder, updatedState),
