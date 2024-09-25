@@ -24,7 +24,7 @@ module utils {
         fromRatio(userShare, t.totalMaker)
 
 
-    // -------
+    // ------- OTHER
     
     pure def min(a,b) = if(a<b) a else b
 
@@ -34,6 +34,20 @@ module utils {
     pure def ok(state: State): Result = {state: state, error: "nil"}
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
+
+    pure def initState : State = 
+        {
+            tranches: Map(),
+            coins: CREATORS.mapBy(creator => TOKENS.mapBy(t => 0)),
+            tranchesShares: CREATORS.mapBy(creator => Map()),
+            blockNumber: 0,
+            poolShares: Map(),
+            pools: Map(),
+            deposits: Map(),
+            poolWithdrawns: Map()
+        }
+
+    // ----
         
 
     pure def unwrapTick(tick: Option[int]) : int = 
@@ -119,10 +133,10 @@ module utils {
 
  
 
-    pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey]): TrancheKey =
+    pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey], pair: TokenPair): TrancheKey =
         trancheKeys.fold(
             // trancheKeys.chooseSome() ideally, but that one is still unimplemented in the simulation
-            {pair: ("A", "B"), tick: MAX_TICK, id: 0},
+            {pair: pair, tick: MAX_TICK*10, id: 0},
             (acc, key) => 
                 if (trancheLTE(key, acc)) 
                     key
@@ -131,10 +145,11 @@ module utils {
         )
     
 
-    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool): PoolId =
+    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool, pair: TokenPair): PoolId =
+        val initTick = if (isPairNormalized) MAX_TICK else -MAX_TICK
         poolKeys.fold(
             // ideally, choose some, but doesn't work in the simulation
-            {tokenPair: ("A", "B"), tick: MAX_TICK, fee: MAX_FEE},
+            {tokenPair: pair, tick: initTick, fee: 0},
             (acc, key) => 
                 if (poolLTE(key, acc, isPairNormalized)) 
                     key
@@ -194,18 +209,18 @@ module utils {
                     acc
                 else
                     // find me the minumum tranche key and the minimum pool key
-                    val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches)
-                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized)
+                    val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches, pair)
+                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized, pair)
                     // the pool price includes the fee
                     val minPoolReserveTick = computeReserveTick(minPoolKey.tick, isPairNormalized, minPoolKey.fee)
-                    // use the tranche key only if its price is strictly lower than that of the pool 
+                    // use the tranche key only if its price is strictly lower than that of the pool
                     if (minTrancheKey.tick < minPoolReserveTick)                        
                         // I want to know how much I can exchange in this tranche 
                         val tranche = tranches.get(minTrancheKey)
                         val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
                         // update the acc value
                         {
-                            tranchesUpdates: acc.tranchesUpdates.set(
+                            tranchesUpdates: acc.tranchesUpdates.put(
                                 minTrancheKey, 
                                 {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
@@ -264,7 +279,7 @@ module utils {
             val appropriateTrancheKeys = tranches.keys().filter(key => key.pair == tokenPair and key.tick == tick and tranches.get(key).isFresh)            
             val tranchesAndSharesUpdate = 
                 if (size(appropriateTrancheKeys) > 0)
-                    val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys)                
+                    val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys, tokenPair)                
                     val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
                     val updatedShares = shares.setBy(
                         creator,
@@ -468,6 +483,8 @@ module utils {
                 totalMaker
             )
         )
+
+    
 
 }
 

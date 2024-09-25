@@ -29,6 +29,9 @@ module Dex {
         advanceTimeAction
     }
 
+    action init = 
+        state' = initState
+
     // ACTIONS
 
     //    CH: WITHDRAWING FROM POOLS
@@ -214,14 +217,30 @@ module Dex {
                 state.tranches.get(trancheKey)
         )
 
+        // 3) update the user's balance
+        val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
+            token => 
+            if (token == msg.tokenPair._2)
+                state.coins.get(msg.creator).get(token) + userReceived
+            else if (token == msg.tokenPair._1)
+                state.coins.get(msg.creator).get(token) - (msg.amountIn - remainingAmount)
+            else
+                state.coins.get(msg.creator).get(token)
+                
+        )
+
+
         val tradeUpdatedState = {
             tranches: tradeUpdatedTranches,
             pools: updatedPools,
+            coins: state.coins.set(msg.creator, updatedUserCoins),
             ...state
         }
+
+
         
 
-        // 3) if there is still some amount left, we need to create a new tranche
+        // 4) if there is still some amount left, we need to create a new tranche
         handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount)
         
     
@@ -282,7 +301,7 @@ module Dex {
                 0,
                 (acc, trancheKey) => 
                 // the abs is because of the way the diff is expressed as negative to signify that the amount was taken from the tranche
-                val userGot = abs(tranchesUpdateInfo.get(trancheKey).takerReservesDiff)
+                val userGot = abs(tranchesUpdateInfo.get(trancheKey).makerReservesDiff)
                 
                 acc + userGot
             )
@@ -351,7 +370,9 @@ module Dex {
         nondet t = oneOf(TICKS)
         nondet token_pair = oneOf(TOKEN_PAIRS)        
         // @audit-info
-        // with this choice, we are not modelling user's funds. The assumption is that the user has as much as needed.
+        // with this choice, we are not modelling user's funds. The assumption is that the user has as much as needed
+        // And can replenish the funds as needed.
+        // This implies that the only way to fill increase modeled coins is by withdrawing from the DEX.
         // This is a simplification that we can revisit later.
         nondet amount = oneOf(1.to(MAX_AMOUNT))
         // not implemented for now, so using a trivial value
@@ -510,6 +531,7 @@ module Dex {
     
 action withdrawLimitOrderAction: bool = 
         nondet creator = oneOf(state.tranchesShares.keys())
+        // TODO: add a restriction that it can only apply to "real" existing tranches
         nondet trancheKey = oneOf(state.tranchesShares.get(creator).keys())
         val withdrawLimitOrderMsg = {
             creator: creator,
@@ -582,21 +604,20 @@ action withdrawLimitOrderAction: bool =
                 cancelAmountOutTakerToken ==
                     before.tranches.get(msg.trancheKey).totalTaker -
                     after.tranches.get(msg.trancheKey).totalTaker
-            },
-            
-            // make sure that the user's withdrawn shares are updated correctly                        
-            before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned 
-            ==
-            after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn                           
+            },                        
         }
 
 
 
     pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
-        // 1) remove the tranche from the user's tranches
-        val updatedUsersTranches = state.tranchesShares.get(msg.creator).keys().exclude(Set(msg.trancheKey)).mapBy(
+        // 1) remove the user's tranches record
+        val updatedUsersTranches = 
+            state.tranchesShares.get(msg.creator).keys().exclude(Set(msg.trancheKey)).mapBy(
             trancheKey => state.tranchesShares.get(msg.creator).get(trancheKey)
-        )
+            )
+
+            
+        
 
         val tranche = state.tranches.get(msg.trancheKey)
         // 2) update the user's coins
@@ -621,7 +642,9 @@ action withdrawLimitOrderAction: bool =
             reservesTaker: tranche.reservesTaker - cancelAmountTakerToken,
             totalTaker: tranche.totalTaker - cancelAmountTakerToken,
             ...tranche
-        }    
+        }
+        
+
         // updated state
         {
             tranchesShares: state.tranchesShares.set(msg.creator, updatedUsersTranches),
@@ -638,7 +661,8 @@ action withdrawLimitOrderAction: bool =
 
 
      action cancelLimitOrderAction: bool =
-        nondet creator = oneOf(state.tranchesShares.keys())
+        // take one of the creators that have some tranches
+        nondet creator = oneOf(state.tranchesShares.keys().filter(c => state.tranchesShares.get(c).keys().size() > 0))
         nondet trancheKey = oneOf(state.tranchesShares.get(creator).keys())
         val cancelLimitOrderMsg = {
             creator: creator,
