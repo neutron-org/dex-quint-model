@@ -16,8 +16,9 @@ module consts {
     // good_til value for a limit order
     pure val MAX_FUTURE_BLOCKS: int = 10
 
-    val MAX_TICK = 10
+    val MAX_TICK = 100000
+    val MAX_SIMULATION_TICK = 10
     val MAX_FEE = 10
-    val TICKS: Set[TickIndex] = (-MAX_TICK).to(MAX_TICK)
+    val TICKS: Set[TickIndex] = (-MAX_SIMULATION_TICK).to(MAX_SIMULATION_TICK)
     val MAX_AMOUNT = 100
     }

@@ -35,6 +35,20 @@ module Dex {
         postconditionOK' = true,
         actionTaken' = {name: "init", message: Init}
     }
+
+    // action specialAction = 
+    //     val alicesOrder: PlaceLimitOrderMsg = {
+    //             creator: "Alice",
+    //             orderType: GoodTillCancelled,
+    //             tokenIn: "B",
+    //             tokenOut: "A",
+    //             amountIn: 20,
+    //             tick: 60,
+    //             maxAmountOut: -1
+    //         }
+    //         all{
+    //             state' = placeLimitOrder(state, alicesOrder),
+
         
 
     // ACTIONS
