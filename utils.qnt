@@ -168,7 +168,7 @@ module utils {
     //  - an integer saying how much of the order amount is still remaining
     // @audit-issue TODO types of limit orders
     // @audit-issue TODO call it swap
-    pure def limitOrderLiquidityIteration(
+    pure def swap(
         pair: TokenPair,
         tranches: TrancheKey -> Tranche,
         pools: PoolId -> Pool,
@@ -176,10 +176,11 @@ module utils {
         maxPriceTick: int,
         maxAmountOut: int // in the first take, I will ignore this one
     ): {
-        remainingAmount: int, 
+        remainingAmount: int,
+        outAmount: int, 
         tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
         poolUpdates: PoolId -> PoolUpdateDiff,
-        userReceives: int
+        outAmount: int
         } =
         
         // I need this for pools because they are stored only under normalized pairs
@@ -187,6 +188,7 @@ module utils {
         val isPairNormalized = pair == normalizedPair
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
+        // checked: it should be both.
         val relevantTranches = tranches.keys().filter(key => key.pair == pair and key.tick <= maxPriceTick)                
         val relevantPools = pools.keys()
                 .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
@@ -199,10 +201,11 @@ module utils {
             {
                 tranchesUpdates: Map(), 
                 poolUpdates: Map(), 
-                remainingAmountToExchange: amount, 
+                remainingAmountToExchange: amount,
+                outAmount: 0,
                 remainingTranches: relevantTranches, 
                 remainingPools: relevantPools,
-                userReceives: 0},
+                outAmount: 0},
             (acc, _) =>
                 // Iterate only if there is still amount to exchange
                 if (acc.remainingAmountToExchange == 0)
@@ -224,8 +227,9 @@ module utils {
                                 minTrancheKey, 
                                 {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
+                            outAmount: acc.outAmount + exchangeInfo.exchangedTakerAmount,
                             remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
-                            userReceives: acc.userReceives + exchangeInfo.exchangedMakerAmount,
+                            outAmount: acc.outAmount + exchangeInfo.exchangedMakerAmount,
                             ...acc
                         } 
                     // otherwise, I am using the pool
@@ -243,6 +247,7 @@ module utils {
                         {
                             remainingPools: acc.remainingPools.setRemove(minPoolKey),
                             remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
+                            outAmount: acc.outAmount + userGetsFromPool,
                             poolUpdates: acc.poolUpdates.set(
                                 minPoolKey, 
                                 if (isPairNormalized) 
@@ -250,12 +255,12 @@ module utils {
                                 else 
                                     {token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool}
                                 ),
-                            userReceives: acc.userReceives + userGetsFromPool,
+                            outAmount: acc.outAmount + userGetsFromPool,
                             ...acc
                         }
                         
         )
-        {remainingAmount: foldResult.remainingAmountToExchange, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates, userReceives: foldResult.userReceives}
+        {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
         
         
 
@@ -350,14 +355,35 @@ module utils {
       (inAmount0, inAmount1)
     }
 
-    // @audit-info when to truncate?
+    // LP.2 in specification invariants
+    // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
+    pure def computeAutoswapFee(residualAmounts: (int, int), tick: TickIndex): Dec =
+        computeDepositValue(residualAmounts, tick).fromInt().mul(one.sub(priceFromTick(tick)))
+
+    // @audit-info not sure if to compute depositValue when autoswapping I should use the full amount in the
+    // deposit message or just the one computed by computeAmountsDeposit
     // can totalPoolValue be 0? Invariant candidate!
-    // LP.1 in specification invariants
-    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int): int =
+    // can autoswapFee > depositValue? Invariant candidate!
+    // 
+    // LP.1 and LP.2 in specification invariants
+    // shareValue = totalPreexistingShares / (totalPoolValue + autswapFee)
+    // sharesMinted = (depositValue - autoswapFee) * shareValue
+    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int, autoswapFee: Dec): int =
       val poolValue = computePoolValue(reserves, tick)
-      val shareValue = existingShares.fromInt().div(poolValue.fromInt()).truncate()
+      val shareValue = existingShares.fromInt().div(poolValue.fromInt().add(autoswapFee)).truncate()
       val depositValue = computeDepositValue(amounts, tick)
-      depositValue * shareValue
+      depositValue.fromInt().sub(autoswapFee).mul(shareValue.fromInt()).truncate()
+
+    // This specifies the implementation
+    // fee = (upperTickIndex - lowerTickIndex) / 2
+    // residualShares = residualAmounts0 * (Price1to0Center / Price1to0Upper) + residualAmounts1 * Price1to0Lower
+    pure def computeResidualShares(residualAmounts: (int, int), id: PoolId): int = 
+      val upperTickIndex = id.tick + id.fee
+      val lowerTickIndex = -id.tick + id.fee
+      val fee = (upperTickIndex - lowerTickIndex) / 2
+      val amount0Discount = priceFromTick(-fee)
+      val priceLowerTakerToMaker = priceFromTick(-id.tick + id.fee)
+      amount0Discount.mul(residualAmounts._1.fromInt()).add(priceLowerTakerToMaker.mul(residualAmounts._2.fromInt())).truncate()
 
     // WITHDRAW TRANCHE RELATED FUNCTIONS
     pure def computeWithdrawTrancheShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
@@ -431,11 +457,11 @@ module utils {
                 acc 
     )
 
-    pure def computeReserveTick(tick: TickIndex, token0to1: bool, fee: Fee): TickIndex = 
+    pure def computeReserveTick(poolTick: TickIndex, token0to1: bool, fee: Fee): TickIndex = 
         if (token0to1) 
-            tick + fee 
+            poolTick + fee 
         else 
-            -tick + fee
+            -poolTick + fee
 
     // @audit-issue Potentially, we need to add a break after we are past limitPrice --> checking with the dev team
     pure def poolsLiquidityIteration(pair: (Token, Token), tokenA: Token, pools: PoolId -> Pool, amount: int): 

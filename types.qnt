@@ -41,6 +41,7 @@ module types {
             amountPair: (int, int),
             tick: TickIndex,
             fee: Fee,
+            autoswap: bool
         }
 
     type WithdrawPoolMsg = {
@@ -57,7 +58,7 @@ module types {
             receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
-            limitPrice: Dec
+            limitPriceTick: TickIndex
         }
 
     type PlaceLimitOrderMsg = {

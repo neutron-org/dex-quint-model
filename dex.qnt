@@ -145,9 +145,13 @@ module Dex {
       val reservesAfter = after.pools.get(poolId).reserves
       val sharesBefore = if (before.pools.has(poolId)) 0 else before.pools.get(poolId).shares
       val sharesAfter = after.pools.get(poolId).shares
-       //@audit-info Why one may not be allowed to deposit the full amount? ratios?
-      val inAmounts = computeAmountsDeposit(reservesBefore, amounts)
-      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, poolId.tick)
+      // Deposit and shares computation considering the optional autoswap
+      val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
+      val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+      val inAmounts = if (msg.autoswap) amounts
+                      else inAmountsBeforeAutoswap
+      val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick) else zero
+      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick, autoswapFee)
       // Reserves are updated
       reservesAfter._1 == reservesBefore._1 + inAmounts._1 and 
       reservesAfter._2 == reservesBefore._2 + inAmounts._2 and
@@ -175,7 +179,7 @@ module Dex {
     
     //    CH: PLACING A LIMIT ORDER
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =        
-        val fulfilledOrderInfo = limitOrderLiquidityIteration(
+        val fulfilledOrderInfo = swap(
             msg.tokenPair,            
             state.tranches,
             state.pools,
@@ -187,7 +191,7 @@ module Dex {
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
         val remainingAmount = fulfilledOrderInfo.remainingAmount
-        val userReceived = fulfilledOrderInfo.userReceives
+        val userReceived = fulfilledOrderInfo.outAmount
 
         // 1) update the pools states
         val updatedPools = state.pools.keys().mapBy(poolId =>
@@ -244,10 +248,33 @@ module Dex {
         handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount)
         
     
+    pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
+        // updated pools equal the 'after' state, the rest is unchanged
+        before.pools.keys().forall(poolId => 
+            if (poolsUpdates.keys().contains(poolId))
+                val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdates.get(poolId).token0Diff,
+                                        before.pools.get(poolId).reserves._2 + poolsUpdates.get(poolId).token1Diff)
+                after.pools.get(poolId).reserves == updatedReserves
+            else
+                before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
+        )
 
+    pure def validateTrachesUpdates(before: State, after: State, tranchesUpdateInfo: TrancheKey -> TrancheUpdateDiff) : bool = 
+        // updated tranches equal the 'after' state, the rest is unchanged
+            before.tranches.keys().forall(trancheKey =>
+                if (tranchesUpdateInfo.keys().contains(trancheKey))
+                    before.tranches.get(trancheKey) ==
+                    {
+                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
+                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                        ...before.tranches.get(trancheKey),
+                    }
+                else
+                    before.tranches.get(trancheKey) == after.tranches.get(trancheKey)
+            )
     
     pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
-        val fulfilledOrderInfo = limitOrderLiquidityIteration(
+        val fulfilledOrderInfo = swap(
             msg.tokenPair,            
             before.tranches,
             before.pools,
@@ -259,31 +286,12 @@ module Dex {
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
         val remainingAmount = fulfilledOrderInfo.remainingAmount
+        val outAmount = fulfilledOrderInfo.outAmount
 
         
         and{
-            // updated pools equal the 'after' state, the rest is unchanged
-            before.pools.keys().forall(poolId => 
-                if (poolsUpdateInfo.keys().contains(poolId))
-                    val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdateInfo.get(poolId).token0Diff,
-                                          before.pools.get(poolId).reserves._2 + poolsUpdateInfo.get(poolId).token1Diff)
-                    after.pools.get(poolId).reserves == updatedReserves
-                else
-                    before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
-            ),
-            
-            // updated tranches equal the 'after' state, the rest is unchanged
-            before.tranches.keys().forall(trancheKey =>
-                if (tranchesUpdateInfo.keys().contains(trancheKey))
-                    before.tranches.get(trancheKey) ==
-                    {
-                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
-                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
-                        ...before.tranches.get(trancheKey),
-                    }
-                else
-                    before.tranches.get(trancheKey) == after.tranches.get(trancheKey)
-            ),
+            validatePoolsUpdates(before, after, poolsUpdateInfo),
+            validateTrachesUpdates(before, after, tranchesUpdateInfo),
 
             // summing up the total amount that the user received and checking if that is what the user has now
             val isPairNormalized = tokenLT(msg.tokenPair._1, msg.tokenPair._2, TOKEN_NUM_VALUES)
@@ -307,7 +315,7 @@ module Dex {
             )
             val userDiff = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)
             // user should have received the correct amount
-            userGotFromPools + userGotFromTranches == userDiff,
+            outAmount == userDiff,
 
             // if there was still some extra amount, it was added to limit orders
             implies(            
@@ -397,16 +405,16 @@ module Dex {
     
     //    CH: SWAPPING
 
-    action swapAction(msg: SwapMsg): bool = {
-      val result = swap(state, msg)
+    action singlehopSwapAction(msg: SwapMsg): bool = {
+      val result = singlehopSwap(state, msg)
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = swapPostcondition(state, result.state, msg)
+        postconditionOK' = singlehopSwapPostcondition(state, result.state, msg)
       }
     }
     
-    pure def swap(state: State, msg: SwapMsg) : Result = {
+    pure def singlehopSwap(state: State, msg: SwapMsg) : Result = {
       val inAmount = msg.amount
       val pair =  orderTokenPair(msg.tokenPair)
       val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, state.pools, inAmount)
@@ -421,26 +429,23 @@ module Dex {
       //ok(state)
     }
 
-    pure def postconditionSwapPool(poolBefore: Pool, poolAfter: Pool, poolPair: (Token, Token), msgPair: (Token, Token), amounts: (int, int)): bool =      
-      if (poolPair._1 == msgPair._1)       
-        poolAfter.reserves._1 == poolBefore.reserves._1 + amounts._1
-        and
-        poolAfter.reserves._2 == poolBefore.reserves._2 - amounts._2      
-
-      else 
-        poolAfter.reserves._1 == poolBefore.reserves._1 - amounts._1 
-        and 
-        poolAfter.reserves._1 == poolBefore.reserves._2 + amounts._2
-
-
-    pure def swapPostcondition(before: State, after: State, msg: SwapMsg): bool =
-      // Assumes that if we check the postcondition is because the action succeeded: we managed to swap to full amount
+    pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): bool =
       val inAmount = msg.amount
-      val pair =  orderTokenPair(msg.tokenPair)
-      val token0to1: bool = pair._1 == msg.tokenPair._1
-      val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, before.pools, inAmount)
-      val outAmount = resultIteration.outAmount
-      val usedAmount = inAmount - resultIteration.inAmount
+      val fulfilledOrderInfo = swap(
+            msg.tokenPair,            
+            before.tranches,
+            before.pools,
+            inAmount,
+            msg.limitPriceTick,
+            0
+            
+        )
+        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
+        val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
+        val remainingAmount = fulfilledOrderInfo.remainingAmount
+        val outAmount = fulfilledOrderInfo.outAmount
+        val usedAmount = inAmount - remainingAmount
+
       // ** State changes validation **
       
       and{
@@ -448,24 +453,20 @@ module Dex {
         after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount,
         after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount,
         // Reserves are updated
-        resultIteration.changes.keys().forall(
-            id => 
-            val poolBefore = before.pools.get(id)
-            val poolAfter = after.pools.get(id)
-            postconditionSwapPool(poolBefore, poolAfter, pair, msg.tokenPair, resultIteration.changes.get(id))
-        ),
+        validatePoolsUpdates(before, after, poolsUpdateInfo),
+        // Tranches changes
+        validateTrachesUpdates(before, after, tranchesUpdateInfo),
         // ** Specification invariants **
         // Invariant Swap.1
-        val minAmount = usedAmount.fromInt().mul(msg.limitPrice).truncate()
+        val exchangeRate = priceFromTick(msg.limitPriceTick)
+        val minAmount = usedAmount.fromInt().mul(exchangeRate).truncate()
         outAmount >= minAmount,
         inAmount >= usedAmount,
         // Invariant LP.3
-        resultIteration.changes.keys().forall(id =>
+        poolsUpdateInfo.keys().forall(id =>
             val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
             val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
-            val reservesChanges = resultIteration.changes.get(id)
-            // @audit-info I am not sure this is equivalent to reservesChanges._1 + reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore
-            reservesChanges._1 > 0 or (reservesChanges._2 > 0 implies poolValueAfter > poolValueBefore)
+            poolValueAfter > poolValueBefore
         )
       }
       
