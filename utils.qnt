@@ -4,7 +4,7 @@ module utils {
     import dec.* from "lib/dec"
     import types.* from "types"
     import consts.* from "consts"
-    import basicSpells.* from "basicSpells"
+    import basicSpells.* from "lib/basicSpells"
 
     
 

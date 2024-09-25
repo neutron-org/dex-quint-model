@@ -3,7 +3,7 @@ module runs {
     import types.* from "types"
     import consts.* from "consts"
     import utils.* from "utils"
-    import basicSpells.* from "basicSpells"
+    import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
 
     action unchangedState = all {

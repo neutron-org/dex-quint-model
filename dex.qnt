@@ -13,7 +13,7 @@ module Dex {
     import types.* from "types"
     import consts.* from "consts"
     import utils.* from "utils"
-    import basicSpells.* from "basicSpells"
+    import basicSpells.* from "lib/basicSpells"
     
     // @audit-info When to truncate as a general rule?
 
