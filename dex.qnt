@@ -263,13 +263,47 @@ module Dex {
             coins: state.coins.set(msg.creator, updatedUserCoins),
             ...state
         }
+        // Different message types handle remaining amount differently:
+        match msg.orderType {
+            // GoodTillCancelled orders add it to liquidity
+            | GoodTillCancelled =>
+                val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount, -1)
+                ok(newTrancheUpdatedState)
+
+            // GoodTillTime orders add it to liquidity, but with the specified expiration time
+            | GoodTillTime(block_time) =>
+                val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount, block_time)
+                ok(newTrancheUpdatedState)
+            
+            // JustInTime order add it to liquidity, but with the next block as expiration time
+            | JustInTime =>
+                val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount, state.blockNumber + 1)
+                ok(newTrancheUpdatedState)
+
+
+            // FillOrKill orders fail if there is remaining amount
+            | FillOrKill =>
+                if (remainingAmount > 0)
+                    {state: tradeUpdatedState, error: "FillOrKill: not enough liquidity"}
+                else
+                    ok(tradeUpdatedState)
+
+            // ImmediateOrCancel orders return the remaining amount to the user
+            | ImmediateOrCancel =>
+                val stateRemainingAmountReturned = {
+                    coins: tradeUpdatedState.coins.setBy(
+                        msg.creator, 
+                        old => old.set(msg.tokenIn, old.get(msg.tokenIn) + remainingAmount)),
+                    ...tradeUpdatedState,
+                }
+                ok(tradeUpdatedState)
+            | _ => ok(tradeUpdatedState)
+        }
 
 
         
 
-        // 4) if there is still some amount left, we need to create a new tranche
-        val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount)
-        ok(newTrancheUpdatedState)
+        
         
     
     pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 

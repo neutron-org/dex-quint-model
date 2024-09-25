@@ -157,8 +157,6 @@ module utils {
     //  - a mapping from poolIds to amounts that should be swapped with this pool
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
-    // @audit-issue TODO types of limit orders
-    // @audit-issue TODO call it swap
     pure def swap(
         tokenIn: Token,
         tokenOut: Token,
@@ -264,7 +262,7 @@ module utils {
 
     pure def trancheTrade(state: State, trancheKey: TrancheKey, trancheUpdateDiff: TrancheUpdateDiff) : State = state
 
-    pure def handleRemainingLimitOrderAmount(state: State, msg: PlaceLimitOrderMsg, amount: int) : State =
+    pure def handleRemainingLimitOrderAmount(state: State, msg: PlaceLimitOrderMsg, amount: int, expirationBlockTime: BlockTime) : State =
         val tranches = state.tranches
         // now it is reversed: the remaining amount of the tokenIn becomes a maker token of a new tranche
         val makerToken = msg.tokenIn
@@ -278,7 +276,15 @@ module utils {
         else
             // looking for an existing tranche under which we would place the maker order 
             val appropriateTrancheKeys = tranches.keys()
-                .filter(key => key.makerToken == makerToken and key.takerToken == takerToken and key.tick == tick and tranches.get(key).isFresh)            
+                .filter(key => 
+                    and{
+                        key.makerToken == makerToken, 
+                        key.takerToken == takerToken,
+                        key.tick == tick, 
+                        tranches.get(key).isFresh,
+                        tranches.get(key).expirationTime == expirationBlockTime
+                    }
+                )            
             val tranchesAndSharesUpdate = 
                 if (size(appropriateTrancheKeys) > 0)
                     val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys)                
@@ -308,8 +314,7 @@ module utils {
                         totalMaker: amount,
                         totalTaker: 0,
                         tick: tick,
-                        // TODO: this is not implemented
-                        expirationTime: -1,
+                        expirationTime: expirationBlockTime,
                         trancheKey: newKey,
                         makerDenomination: makerToken,
                         takerDenomination: takerToken
@@ -326,7 +331,7 @@ module utils {
                 // returning the state
                 val updatedCoins = state.coins.setBy(
                     msg.creator, 
-                    // we spent all coins! This is specific for the Good-Til-Cancelled. TODO: handle other types
+                    // we spent all coins by placing it as new liquidity
                     old => old.set(msg.tokenIn, 0)                    
                     )
                 {
