@@ -20,6 +20,7 @@ module Dex {
     // CH: STATE VARIABLES
     var state: State  
     var postconditionOK: bool
+    var actionSuccess: bool
     var actionTaken: Transition
 
     // CH: STATE MACHINE
@@ -199,7 +200,7 @@ module Dex {
     
     
     //    CH: PLACING A LIMIT ORDER
-    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =        
+    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : Result =        
         val fulfilledOrderInfo = swap(
             msg.tokenIn, 
             msg.tokenOut,            
@@ -267,7 +268,8 @@ module Dex {
         
 
         // 4) if there is still some amount left, we need to create a new tranche
-        handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount)
+        val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount)
+        ok(newTrancheUpdatedState)
         
     
     pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
@@ -424,9 +426,10 @@ module Dex {
         val res = placeLimitOrder(state, limitOrderMsg)
 
         all {
-            state' = res,
-            postconditionOK' = placeLimitOrderPostcondition(state, limitOrderMsg, res),
-            actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)}
+            state' = res.state,
+            postconditionOK' = placeLimitOrderPostcondition(state, limitOrderMsg, res.state),
+            actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
+            actionSuccess' = res.error == "nil"
         }   
 
     
@@ -506,7 +509,7 @@ module Dex {
     
     //   CH: WITHDRAWING PROCEEDS OF A TRANCHE
 
-    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : State =
+    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : Result =
         val tranche = state.tranches.get(msg.trancheKey)
         val userTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)
         val withdrawnShares: int =
@@ -520,6 +523,7 @@ module Dex {
         val updatedTrancheTakerReserves = tranche.reservesTaker - withdrawnAmountTakerToken
         // 3) updating the user's shares: increasing the withdrawn shares
         val updatedUserShares = {sharesWithdrawn: userTrancheShares.sharesWithdrawn + withdrawnShares, ...userTrancheShares}
+        val updatedState = 
         {
             coins: state.coins.setBy(
                 msg.creator, 
@@ -530,6 +534,7 @@ module Dex {
                 old => old.set(msg.trancheKey, updatedUserShares)),
             ...state
         }
+        ok(updatedState)
     
     pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
         val withdrawnShares: int = computeWithdrawTrancheShares(
@@ -578,9 +583,11 @@ action withdrawLimitOrderAction: bool =
             // tranche is attempted.
             // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
             require(not(state.tranches.get(trancheKey).isFresh)),
-            state' = res,
-            postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res),
-            actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)}
+            state' = res.state,
+            postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res.state),
+            actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)},
+            actionSuccess' = res.error == "nil"
+            
         }
     
     
@@ -642,7 +649,7 @@ action withdrawLimitOrderAction: bool =
 
 
 
-    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : State =
+    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : Result =
         // 1) remove the user's tranches record
         val updatedUsersTranches = 
             state.tranchesShares.get(msg.creator).keys().exclude(Set(msg.trancheKey)).mapBy(
@@ -679,6 +686,7 @@ action withdrawLimitOrderAction: bool =
         
 
         // updated state
+        val updatedState =
         {
             tranchesShares: state.tranchesShares.set(msg.creator, updatedUsersTranches),
             coins: state.coins.set(
@@ -690,7 +698,7 @@ action withdrawLimitOrderAction: bool =
             tranches: state.tranches.set(msg.trancheKey, updatedTranche),
             ... state
         }
-        // state 
+        ok(updatedState)
 
 
      action cancelLimitOrderAction: bool =
@@ -703,9 +711,10 @@ action withdrawLimitOrderAction: bool =
         }
         val res = cancelLimitOrder(state, cancelLimitOrderMsg)
         all{
-            state' = res,
-            postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res),
-            actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)}
+            state' = res.state,
+            postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res.state),
+            actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)},
+            actionSuccess' = res.error == "nil"
         }
 
 
@@ -771,7 +780,8 @@ action withdrawLimitOrderAction: bool =
                 advanceMultipleBlocksAction
             },
             postconditionOK' = postconditionOK,
-            actionTaken' = {name: "advanceTime", message: AdvanceTime}
+            actionTaken' = {name: "advanceTime", message: AdvanceTime},
+            actionSuccess' = true
         }        
         
         
