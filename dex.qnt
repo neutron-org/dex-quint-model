@@ -20,6 +20,7 @@ module Dex {
     // CH: STATE VARIABLES
     var state: State  
     var postconditionOK: bool
+    var actionTaken: Transition
 
     // CH: STATE MACHINE
     action step: bool = any {
@@ -29,8 +30,12 @@ module Dex {
         advanceTimeAction
     }
 
-    action init = 
-        state' = initState
+    action init = all {
+        state' = initState,
+        postconditionOK' = true,
+        actionTaken' = {name: "init", message: Init}
+    }
+        
 
     // ACTIONS
 
@@ -65,7 +70,8 @@ module Dex {
         withdrawPoolPrecondition(state, msg),
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = withdrawPoolPostcondition(state, result.state, msg)
+        postconditionOK' = withdrawPoolPostcondition(state, result.state, msg),
+        actionTaken' = {name: "withdraw", message: WithdrawPoolSubType(msg)}
       }
     }
 
@@ -126,7 +132,8 @@ module Dex {
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = depositPostcondition(state, result.state, msg)
+        postconditionOK' = depositPostcondition(state, result.state, msg),
+        actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
       }
     }
 
@@ -180,7 +187,8 @@ module Dex {
     //    CH: PLACING A LIMIT ORDER
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : State =        
         val fulfilledOrderInfo = swap(
-            msg.tokenPair,            
+            msg.tokenIn, 
+            msg.tokenOut,            
             state.tranches,
             state.pools,
             msg.amountIn,
@@ -224,9 +232,9 @@ module Dex {
         // 3) update the user's balance
         val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
             token => 
-            if (token == msg.tokenPair._2)
+            if (token == msg.tokenOut)
                 state.coins.get(msg.creator).get(token) + userReceived
-            else if (token == msg.tokenPair._1)
+            else if (token == msg.tokenIn)
                 state.coins.get(msg.creator).get(token) - (msg.amountIn - remainingAmount)
             else
                 state.coins.get(msg.creator).get(token)
@@ -275,7 +283,8 @@ module Dex {
     
     pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
         val fulfilledOrderInfo = swap(
-            msg.tokenPair,            
+            msg.tokenIn,
+            msg.tokenOut,
             before.tranches,
             before.pools,
             msg.amountIn,
@@ -294,7 +303,7 @@ module Dex {
             validateTrachesUpdates(before, after, tranchesUpdateInfo),
 
             // summing up the total amount that the user received and checking if that is what the user has now
-            val isPairNormalized = tokenLT(msg.tokenPair._1, msg.tokenPair._2, TOKEN_NUM_VALUES)
+            val isPairNormalized = tokenLT(msg.tokenIn, msg.tokenOut, TOKEN_NUM_VALUES)
             val userGotFromPools = poolsUpdateInfo.keys().fold(
                 0,
                 (acc, poolId) => 
@@ -313,16 +322,19 @@ module Dex {
                 
                 acc + userGot
             )
-            val userDiff = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)
+            val userDiffOut = after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
             // user should have received the correct amount
-            outAmount == userDiff,
+            outAmount == userDiffOut,
 
             // if there was still some extra amount, it was added to limit orders
             implies(            
                 remainingAmount > 0,
-                val trancheIndex = calculateTrancheIndex(msg.tokenPair, msg.tick, before.tranches.keys())
+                val makerToken = msg.tokenIn
+                val takerToken = msg.tokenOut
+                val trancheIndex = calculateTrancheIndex(makerToken, takerToken, msg.tick, before.tranches.keys())
                 val trancheKey = {
-                    pair: msg.tokenPair,
+                    makerToken: makerToken,
+                    takerToken: takerToken,
                     tick: msg.tick,
                     id: trancheIndex
                 }
@@ -376,7 +388,8 @@ module Dex {
         nondet c = oneOf(CREATORS)
         nondet o = oneOf(ORDER_TYPES)
         nondet t = oneOf(TICKS)
-        nondet token_pair = oneOf(TOKEN_PAIRS)        
+        nondet tokenIn = oneOf(TOKENS)
+        nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn)) 
         // @audit-info
         // with this choice, we are not modelling user's funds. The assumption is that the user has as much as needed
         // And can replenish the funds as needed.
@@ -389,7 +402,8 @@ module Dex {
             creator: c,
             orderType: o,
             tick: t,
-            tokenPair: token_pair,
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
             amountIn: amount,
             maxAmountOut: maxAmountOut
         }
@@ -397,7 +411,8 @@ module Dex {
 
         all {
             state' = res,
-            postconditionOK' = placeLimitOrderPostcondition(state, limitOrderMsg, res)
+            postconditionOK' = placeLimitOrderPostcondition(state, limitOrderMsg, res),
+            actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)}
         }   
 
     
@@ -410,7 +425,8 @@ module Dex {
       all {
         require(result.error=="nil"),
         state' = result.state,
-        postconditionOK' = singlehopSwapPostcondition(state, result.state, msg)
+        postconditionOK' = singlehopSwapPostcondition(state, result.state, msg),
+        actionTaken' = {name: "swap", message: SwapSubType(msg)}
       }
     }
     
@@ -432,7 +448,8 @@ module Dex {
     pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): bool =
       val inAmount = msg.amount
       val fulfilledOrderInfo = swap(
-            msg.tokenPair,            
+            msg.tokenPair._1,
+            msg.tokenPair._2,            
             before.tranches,
             before.pools,
             inAmount,
@@ -548,7 +565,8 @@ action withdrawLimitOrderAction: bool =
             // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
             require(not(state.tranches.get(trancheKey).isFresh)),
             state' = res,
-            postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res)
+            postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res),
+            actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)}
         }
     
     
@@ -628,13 +646,13 @@ action withdrawLimitOrderAction: bool =
             percentUnfilled,
             state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned
         ).truncate()
-        val updatedUserCoinsMaker = state.coins.get(msg.creator).get(msg.trancheKey.pair._1) + cancelAmountMakerToken
+        val updatedUserCoinsMaker = state.coins.get(msg.creator).get(msg.trancheKey.makerToken) + cancelAmountMakerToken
         // 2b) calculate the amount of the tranche taker token that the user should receive back (withdraw equivalent)
         val percentFilled = calculatePercentFilled(tranche)     
         val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche, state.tranchesShares.get(msg.creator))       
         val cancelAmountTakerToken = 
             computeWithdrawTrancheAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche.totalTaker)
-        val updatedUserCoinsTaker = state.coins.get(msg.creator).get(msg.trancheKey.pair._2) + cancelAmountTakerToken
+        val updatedUserCoinsTaker = state.coins.get(msg.creator).get(msg.trancheKey.takerToken) + cancelAmountTakerToken
        
         // 3) update the tranche reserves
         val updatedTranche = {
@@ -652,8 +670,8 @@ action withdrawLimitOrderAction: bool =
             coins: state.coins.set(
                 msg.creator,
                 state.coins.get(msg.creator)
-                    .set(msg.trancheKey.pair._1, updatedUserCoinsMaker)
-                    .set(msg.trancheKey.pair._2, updatedUserCoinsTaker)
+                    .set(msg.trancheKey.makerToken, updatedUserCoinsMaker)
+                    .set(msg.trancheKey.takerToken, updatedUserCoinsTaker)
                 ),
             tranches: state.tranches.set(msg.trancheKey, updatedTranche),
             ... state
@@ -672,7 +690,8 @@ action withdrawLimitOrderAction: bool =
         val res = cancelLimitOrder(state, cancelLimitOrderMsg)
         all{
             state' = res,
-            postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res)
+            postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res),
+            actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)}
         }
 
 
@@ -737,7 +756,8 @@ action withdrawLimitOrderAction: bool =
                 advanceSingleBlockAction,
                 advanceMultipleBlocksAction
             },
-            postconditionOK' = postconditionOK
+            postconditionOK' = postconditionOK,
+            actionTaken' = {name: "advanceTime", message: AdvanceTime}
         }        
         
         

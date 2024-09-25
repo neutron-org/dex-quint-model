@@ -10,10 +10,16 @@ module types {
     type TrancheIndex = int
 
     type TrancheKey = {
-        pair: TokenPair,
+        makerToken: Token,
+        takerToken: Token,
         tick: TickIndex,
         id: TrancheIndex
     }
+
+    type Transition = {
+        name: str,
+        message: Message
+    } 
 
     
     type Option[a] = None | Some(a)
@@ -28,10 +34,16 @@ module types {
     // MESSAGES
 
     type Message = 
-      DepositSubType(DepositMsg)
+    | DepositPoolSubType(DepositMsg)
     | PlaceLimitOrderSubType(PlaceLimitOrderMsg)
     | CancelLimitOrderSubType(CancelLimitOrderMsg)
     | WithdrawLimitOrderSubType(WithdrawLimitOrderMsg)
+    | WithdrawPoolSubType(WithdrawPoolMsg)
+    | SwapSubType(SwapMsg)
+    | Init
+    | AdvanceTime
+
+
 
     //@audit-info : Simplified to only allow deposit in a single position
     type DepositMsg = {
@@ -64,8 +76,9 @@ module types {
             // we have to choose tickIndex because the log operation is missing
             // @audit-info : If we will really need the log operation, what are our Quint options?
             tick: TickIndex, 
-            // semantics: I want to exchange tokenPair_1 for tokenPair_2 ==> TODO: make this explicit in the type
-            tokenPair: (Token, Token),
+            // semantics: I want to exchange tokenIn for tokenOut
+            tokenIn: Token,
+            tokenOut: Token,
             amountIn: int,
             maxAmountOut: int,
         }

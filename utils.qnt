@@ -83,7 +83,7 @@ module utils {
     
     
     
-    pure def calculateTrancheIndex(tokenPair: TokenPair, tick: TickIndex, existingTranchesKeys: Set[TrancheKey]): int = 
+    pure def calculateTrancheIndex(makerToken: Token, takerToken: Token, tick: TickIndex, existingTranchesKeys: Set[TrancheKey]): int = 
     
         // TODO: NOT-IMPLEMENTED
         -1
@@ -120,23 +120,14 @@ module utils {
             }                
     }
     
-    pure def getMinimumTranche(tranches: Set[TrancheKey]): TrancheKey =
-        tranches.fold(
-            // tranches.chooseSome() ideally, but that one is still unimplemented in the simulation
-            {pair: ("A", "B"), tick: MAX_TICK, id: 0},
-            (acc, key) => 
-                if (trancheLTE(key, acc))
-                    key
-                else 
-                    acc
-        )
+    
 
  
 
-    pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey], pair: TokenPair): TrancheKey =
+    pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey]): TrancheKey =
         trancheKeys.fold(
             // trancheKeys.chooseSome() ideally, but that one is still unimplemented in the simulation
-            {pair: pair, tick: MAX_TICK*10, id: 0},
+            {makerToken: "_", takerToken: "_", tick: MAX_TICK*10, id: 0},
             (acc, key) => 
                 if (trancheLTE(key, acc)) 
                     key
@@ -145,11 +136,11 @@ module utils {
         )
     
 
-    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool, pair: TokenPair): PoolId =
+    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool): PoolId =
         val initTick = if (isPairNormalized) MAX_TICK else -MAX_TICK
         poolKeys.fold(
             // ideally, choose some, but doesn't work in the simulation
-            {tokenPair: pair, tick: initTick, fee: 0},
+            {tokenPair: ("_", "_"), tick: initTick, fee: 0},
             (acc, key) => 
                 if (poolLTE(key, acc, isPairNormalized)) 
                     key
@@ -169,7 +160,8 @@ module utils {
     // @audit-issue TODO types of limit orders
     // @audit-issue TODO call it swap
     pure def swap(
-        pair: TokenPair,
+        tokenIn: Token,
+        tokenOut: Token,
         tranches: TrancheKey -> Tranche,
         pools: PoolId -> Pool,
         amount: int,
@@ -183,13 +175,15 @@ module utils {
         outAmount: int
         } =
         
+        val inOutPair = (tokenIn, tokenOut)
         // I need this for pools because they are stored only under normalized pairs
-        val normalizedPair = orderTokenPair(pair)
-        val isPairNormalized = pair == normalizedPair
+        val normalizedPair = orderTokenPair(inOutPair)
+        val isPairNormalized = inOutPair == normalizedPair
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         // checked: it should be both.
-        val relevantTranches = tranches.keys().filter(key => key.pair == pair and key.tick <= maxPriceTick)                
+        val relevantTranches = tranches.keys()
+            .filter(key => key.makerToken == tokenOut and key.takerToken == tokenIn and key.tick <= maxPriceTick)                
         val relevantPools = pools.keys()
                 .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
             
@@ -212,8 +206,8 @@ module utils {
                     acc
                 else
                     // find me the minumum tranche key and the minimum pool key
-                    val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches, pair)
-                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized, pair)
+                    val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches)
+                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized)
                     // the pool price includes the fee
                     val minPoolReserveTick = computeReserveTick(minPoolKey.tick, isPairNormalized, minPoolKey.fee)
                     // use the tranche key only if its price is strictly lower than that of the pool
@@ -227,7 +221,6 @@ module utils {
                                 minTrancheKey, 
                                 {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
                             remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
-                            outAmount: acc.outAmount + exchangeInfo.exchangedTakerAmount,
                             remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
                             outAmount: acc.outAmount + exchangeInfo.exchangedMakerAmount,
                             ...acc
@@ -273,7 +266,10 @@ module utils {
 
     pure def handleRemainingLimitOrderAmount(state: State, msg: PlaceLimitOrderMsg, amount: int) : State =
         val tranches = state.tranches
-        val tokenPair = msg.tokenPair
+        // now it is reversed: the remaining amount of the tokenIn becomes a maker token of a new tranche
+        val makerToken = msg.tokenIn
+        // and the tokenOut, the one that the creator wants to receive, becomes the taker token
+        val takerToken = msg.tokenOut
         val tick = msg.tick
         val shares = state.tranchesShares
         val creator = msg.creator
@@ -281,10 +277,11 @@ module utils {
             state
         else
             // looking for an existing tranche under which we would place the maker order 
-            val appropriateTrancheKeys = tranches.keys().filter(key => key.pair == tokenPair and key.tick == tick and tranches.get(key).isFresh)            
+            val appropriateTrancheKeys = tranches.keys()
+                .filter(key => key.makerToken == makerToken and key.takerToken == takerToken and key.tick == tick and tranches.get(key).isFresh)            
             val tranchesAndSharesUpdate = 
                 if (size(appropriateTrancheKeys) > 0)
-                    val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys, tokenPair)                
+                    val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys)                
                     val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
                     val updatedShares = shares.setBy(
                         creator,
@@ -303,7 +300,7 @@ module utils {
                         (acc, key) => if (key.id > acc) key.id else acc
                     )
                     // in the implementation, the id is connected to the block number. Here, we use increasing values
-                    val newKey = {pair: tokenPair, tick: tick, id: maxTrancheId + 1}
+                    val newKey = {makerToken: makerToken, takerToken: takerToken, tick: tick, id: maxTrancheId + 1}
                     val newTranche = {
                         isFresh: true,
                         reservesMaker: amount,
@@ -314,8 +311,8 @@ module utils {
                         // TODO: this is not implemented
                         expirationTime: -1,
                         trancheKey: newKey,
-                        makerDenomination: tokenPair._1,
-                        takerDenomination: tokenPair._2
+                        makerDenomination: makerToken,
+                        takerDenomination: takerToken
                     }
                     val newShareAccount = {sharesOwned: amount, sharesWithdrawn: 0}
 
@@ -330,7 +327,7 @@ module utils {
                 val updatedCoins = state.coins.setBy(
                     msg.creator, 
                     // we spent all coins! This is specific for the Good-Til-Cancelled. TODO: handle other types
-                    old => old.set(msg.tokenPair._1, 0)                    
+                    old => old.set(msg.tokenIn, 0)                    
                     )
                 {
                     tranches: tranchesAndSharesUpdate._1,
