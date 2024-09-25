@@ -36,7 +36,6 @@ module types {
     //@audit-info : Simplified to only allow deposit in a single position
     type DepositMsg = {
             creator: Addr,
-            receiver: Addr,
             tokenPair: (Token, Token),
             amountPair: (int, int),
             tick: TickIndex,
@@ -46,7 +45,6 @@ module types {
 
     type WithdrawPoolMsg = {
             creator: Addr,
-            receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
             tick: TickIndex,
@@ -55,7 +53,6 @@ module types {
 
     type SwapMsg = {
             creator: Addr,
-            receiver: Addr,
             tokenPair: (Token, Token),
             amount: int,
             limitPriceTick: TickIndex

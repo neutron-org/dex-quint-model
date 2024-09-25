@@ -86,8 +86,8 @@ module Dex {
       reservesAfter._1 == reservesBefore._1 - outAmounts._1 and reservesAfter._1 >= 0 and
       reservesAfter._2 == reservesBefore._2 - outAmounts._2 and reservesAfter._2 >= 0 and
       // Coins are transferred
-      after.coins.get(msg.receiver).get(pair._1) == before.coins.get(msg.receiver).get(pair._1) + outAmounts._1 and
-      after.coins.get(msg.receiver).get(pair._2) == before.coins.get(msg.receiver).get(pair._2) + outAmounts._2 and
+      after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) + outAmounts._1 and
+      after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) + outAmounts._2 and
       // Shares are burned
       // We assume that we do not remove empty shares
       after.poolShares.get(msg.creator).get(poolId) >= 0 and
@@ -160,10 +160,10 @@ module Dex {
       after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) - inAmounts._1 and
       after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) - inAmounts._2 and
       // Shares are minted
-      after.poolShares.get(msg.receiver).has(poolId) and
-      after.poolShares.get(msg.receiver).get(poolId) == 
-      (if (before.poolShares.get(msg.receiver).has(poolId)) 
-            before.poolShares.get(msg.receiver).get(poolId) + outShares
+      after.poolShares.get(msg.creator).has(poolId) and
+      after.poolShares.get(msg.creator).get(poolId) == 
+      (if (before.poolShares.get(msg.creator).has(poolId)) 
+            before.poolShares.get(msg.creator).get(poolId) + outShares
         else 
             outShares) 
       and
@@ -451,7 +451,7 @@ module Dex {
       and{
         // Coins are transferred
         after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount,
-        after.coins.get(msg.receiver).get(msg.tokenPair._2) == before.coins.get(msg.receiver).get(msg.tokenPair._2) + outAmount,
+        after.coins.get(msg.creator).get(msg.tokenPair._2) == before.coins.get(msg.creator).get(msg.tokenPair._2) + outAmount,
         // Reserves are updated
         validatePoolsUpdates(before, after, poolsUpdateInfo),
         // Tranches changes
@@ -697,7 +697,6 @@ action withdrawLimitOrderAction: bool =
     
     // Invariant: LP profit from their deposits
     // LP.5 in specification invariants
-    // We may be able to write something stricktly greater if we keep track when swaps occur
     val profitDeposit =
       CREATORS.forall(
         creator => state.deposits.get(creator).keys().forall(
