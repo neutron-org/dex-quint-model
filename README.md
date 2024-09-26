@@ -101,3 +101,4 @@ After doing that, inspect the trace in the file `out.itf.json` ->  in order to t
  - a richer set of invariants
  - `maxAmountOut` parameter for placing limit orders
  - `behindEnemyLines` check
+ - pool-related actions need to be incorporated in the devEvolution (their transformation functions are ready in the `dex.qnt`)

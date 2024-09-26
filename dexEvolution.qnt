@@ -19,22 +19,34 @@ module dexEvolution {
         placeLimitOrderAction,
         cancelLimitOrderAction,
         withdrawLimitOrderAction,
-        advanceTimeAction
+        advanceTimeAction,
+        // withdrawAction
+        // depositAction
+        // singlehopSwapAction,
     }
 
     action init = all {
         state' = initState,
         postconditionOK' = true,
-        actionTaken' = {name: "init", message: Init}
+        actionTaken' = {name: "init", message: Init},
+        actionSuccess' = true
     }
 
     // ACTIONS
 
-    action withdrawAction(msg: WithdrawPoolMsg): bool = {
+    action withdrawAction: bool = {
+        
+    // @audit-info Incorporate in the evolution
+      val msg = {
+        creator: "",
+        tokenPair: ("", ""),
+        amount: 1,
+        tick: 0,
+        fee: 0
+      }
       val result = withdrawPool(state, msg)
-      all {
-        withdrawPoolPrecondition(state, msg),
-        require(result.error=="nil"),
+      all {        
+        actionSuccess' = result.error == "nil",
         state' = result.state,
         postconditionOK' = withdrawPoolPostcondition(state, result.state, msg),
         actionTaken' = {name: "withdraw", message: WithdrawPoolSubType(msg)}
@@ -44,7 +56,7 @@ module dexEvolution {
     action depositAction(msg: DepositMsg): bool = {
       val result = deposit(state, msg)
       all {
-        require(result.error=="nil"),
+        actionSuccess' = result.error == "nil",
         state' = result.state,
         postconditionOK' = depositPostcondition(state, result.state, msg),
         actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
