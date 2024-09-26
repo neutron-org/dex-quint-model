@@ -37,21 +37,6 @@ module Dex {
         actionTaken' = {name: "init", message: Init}
     }
 
-    // action specialAction = 
-    //     val alicesOrder: PlaceLimitOrderMsg = {
-    //             creator: "Alice",
-    //             orderType: GoodTillCancelled,
-    //             tokenIn: "B",
-    //             tokenOut: "A",
-    //             amountIn: 20,
-    //             tick: 60,
-    //             maxAmountOut: -1
-    //         }
-    //         all{
-    //             state' = placeLimitOrder(state, alicesOrder),
-
-        
-
     // ACTIONS
 
     //    CH: WITHDRAWING FROM POOLS
@@ -217,32 +202,12 @@ module Dex {
         val userReceived = fulfilledOrderInfo.outAmount
 
         // 1) update the pools states
-        val updatedPools = state.pools.keys().mapBy(poolId =>
-            if (poolsUpdateInfo.keys().contains(poolId))
-                val updatedReserves = (state.pools.get(poolId).reserves._1 + poolsUpdateInfo.get(poolId).token0Diff,
-                                      state.pools.get(poolId).reserves._2 + poolsUpdateInfo.get(poolId).token1Diff)
-                {
-                    reserves: updatedReserves,
-                    shares: state.pools.get(poolId).shares
-                }
-            else
-                state.pools.get(poolId)            
-        )
+        val updatedPools = updatePools(state.pools, poolsUpdateInfo)
         
 
         // 2) update the tranches states
-        val tradeUpdatedTranches = state.tranches.keys().mapBy(
-            trancheKey =>
-            if (tranchesUpdateInfo.keys().contains(trancheKey))
-                {
-                    reservesMaker: state.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
-                    reservesTaker: state.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
-                    isFresh: false,
-                    ...state.tranches.get(trancheKey),
-                }
-            else
-                state.tranches.get(trancheKey)
-        )
+        val tradeUpdatedTranches = updateTranches(state.tranches, tranchesUpdateInfo)
+        
 
         // 3) update the user's balance
         val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
@@ -252,8 +217,7 @@ module Dex {
             else if (token == msg.tokenIn)
                 state.coins.get(msg.creator).get(token) - (msg.amountIn - remainingAmount)
             else
-                state.coins.get(msg.creator).get(token)
-                
+                state.coins.get(msg.creator).get(token)                
         )
 
 
@@ -299,37 +263,7 @@ module Dex {
                 ok(tradeUpdatedState)
             | _ => ok(tradeUpdatedState)
         }
-
-
-        
-
-        
-        
     
-    pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
-        // updated pools equal the 'after' state, the rest is unchanged
-        before.pools.keys().forall(poolId => 
-            if (poolsUpdates.keys().contains(poolId))
-                val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdates.get(poolId).token0Diff,
-                                        before.pools.get(poolId).reserves._2 + poolsUpdates.get(poolId).token1Diff)
-                after.pools.get(poolId).reserves == updatedReserves
-            else
-                before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
-        )
-
-    pure def validateTrachesUpdates(before: State, after: State, tranchesUpdateInfo: TrancheKey -> TrancheUpdateDiff) : bool = 
-        // updated tranches equal the 'after' state, the rest is unchanged
-            before.tranches.keys().forall(trancheKey =>
-                if (tranchesUpdateInfo.keys().contains(trancheKey))
-                    before.tranches.get(trancheKey) ==
-                    {
-                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
-                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
-                        ...before.tranches.get(trancheKey),
-                    }
-                else
-                    before.tranches.get(trancheKey) == after.tranches.get(trancheKey)
-            )
     
     pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
         // TODO: incorporate also here different types of orders (as it was done in the action)
@@ -491,18 +425,49 @@ module Dex {
     
     pure def singlehopSwap(state: State, msg: SwapMsg) : Result = {
       val inAmount = msg.amount
-      val pair =  orderTokenPair(msg.tokenPair)
-      val resultIteration = poolsLiquidityIteration(pair, msg.tokenPair._1, state.pools, inAmount)
-      // deposits variable management
-      val relevantPoolIds = resultIteration.changes.keys().filter(id => val changes = resultIteration.changes.get(id)
-                                                                        changes._1 + changes._2 > 0)
-      val updatedDeposits = CREATORS.fold(state.deposits, (acc, user) => acc.set(user, updateSwapsBool(msg.creator,
-                                                                                                       relevantPoolIds,
-                                                                                                       state.deposits.get(user),
-                                                                                                       state.poolShares.get(user))))
-      ok({deposits: updatedDeposits, ...state})
-      //ok(state)
+      val fulfilledOrderInfo = swap(
+            msg.tokenPair._1,
+            msg.tokenPair._2,            
+            state.tranches,
+            state.pools,
+            inAmount,
+            msg.limitPriceTick,
+            0            
+        )
+        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
+        val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
+        val remainingAmount = fulfilledOrderInfo.remainingAmount
+        val outAmount = fulfilledOrderInfo.outAmount
+        val usedAmount = inAmount - remainingAmount
+
+        // 1) update the coins of the user
+        val updatedCoins = state.coins.get(msg.creator)
+                .setBy(msg.tokenPair._1, old => old - usedAmount)
+                .setBy(msg.tokenPair._2, old => old + outAmount)
+        // 2) update the reserves of the pools
+        val updatedPools = updatePools(state.pools, poolsUpdateInfo)
+
+        // 3) update the tranches
+        val updatedTranches = updateTranches(state.tranches, tranchesUpdateInfo)
+
+        // 4) update the user's deposits (helper variable)
+        val updatedDeposits = CREATORS.fold(
+        state.deposits, 
+        (acc, user) => 
+            acc.set(user, updateSwapsBool(msg.creator, poolsUpdateInfo.keys(),state.deposits.get(user),state.poolShares.get(user)))
+        )                                                
+
+        val updatedState = {
+            coins: state.coins.set(msg.creator, updatedCoins),
+            pools: updatedPools,
+            tranches: updatedTranches,
+            deposits: updatedDeposits,
+            ...state
+        }
+
+        ok(updatedState)
     }
+    
 
     pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): bool =
       val inAmount = msg.amount
@@ -513,8 +478,7 @@ module Dex {
             before.pools,
             inAmount,
             msg.limitPriceTick,
-            0
-            
+            0            
         )
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
@@ -826,10 +790,6 @@ action withdrawLimitOrderAction: bool =
             actionSuccess' = true
         }        
         
-        
-
-    
-
 
 
 }

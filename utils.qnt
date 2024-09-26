@@ -269,7 +269,56 @@ module utils {
         {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
         
         
+pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
+        // updated pools equal the 'after' state, the rest is unchanged
+        before.pools.keys().forall(poolId => 
+            if (poolsUpdates.keys().contains(poolId))
+                val updatedReserves = (before.pools.get(poolId).reserves._1 + poolsUpdates.get(poolId).token0Diff,
+                                        before.pools.get(poolId).reserves._2 + poolsUpdates.get(poolId).token1Diff)
+                after.pools.get(poolId).reserves == updatedReserves
+            else
+                before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
+        )
 
+    pure def validateTrachesUpdates(before: State, after: State, tranchesUpdateInfo: TrancheKey -> TrancheUpdateDiff) : bool = 
+        // updated tranches equal the 'after' state, the rest is unchanged
+            before.tranches.keys().forall(trancheKey =>
+                if (tranchesUpdateInfo.keys().contains(trancheKey))
+                    before.tranches.get(trancheKey) ==
+                    {
+                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
+                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                        ...before.tranches.get(trancheKey),
+                    }
+                else
+                    before.tranches.get(trancheKey) == after.tranches.get(trancheKey)
+            )
+    
+
+    pure def updatePools(pools: PoolId -> Pool, poolUpdates: PoolId -> PoolUpdateDiff): PoolId -> Pool =
+        pools.keys().mapBy(poolId =>
+            if (poolUpdates.keys().contains(poolId))
+                {
+                    reserves: (pools.get(poolId).reserves._1 + poolUpdates.get(poolId).token0Diff,
+                               pools.get(poolId).reserves._2 + poolUpdates.get(poolId).token1Diff),
+                    shares: pools.get(poolId).shares
+                }
+            else
+                pools.get(poolId)
+        )
+
+    pure def updateTranches(tranches: TrancheKey -> Tranche, tranchesUpdateInfo: TrancheKey -> TrancheUpdateDiff): TrancheKey -> Tranche =
+        tranches.keys().mapBy(trancheKey =>
+            if (tranchesUpdateInfo.keys().contains(trancheKey))
+                {
+                    reservesMaker: tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
+                    reservesTaker: tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                    isFresh: false,
+                    ...tranches.get(trancheKey)
+                }
+            else
+                tranches.get(trancheKey)
+        )
     
 
     pure def poolSwap(state: State, poolId: PoolId, poolUpdateDiff: PoolUpdateDiff) : State = 

@@ -167,6 +167,7 @@ module types {
         poolShares: Addr -> PoolId -> int,
         pools: PoolId -> Pool,        
 
+        // helper state variables, to be used in invariants
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
         poolWithdrawns: Addr -> PoolId -> (int, int)
 
