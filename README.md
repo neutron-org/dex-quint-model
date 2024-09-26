@@ -91,6 +91,7 @@ After doing that, inspect the trace in the file `out.itf.json` ->  in order to t
 ## Modeling decisions
  - upon cancelling, we are not removing any tranches (rather, updating their values to 0)
  - `MultiHopSwap` is abstracted away by a `SingleHopSwap`
+ - user's input is always a tick, and not price (to avoid taking the `log` when placing the order)
 
 ## Still missing from the model
  - clearing of inactive orders each block
