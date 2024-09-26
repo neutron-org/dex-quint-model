@@ -88,7 +88,9 @@ The Quint simulator creates a number of behaviors allowed by the model. You can 
 `quint run --max-samples=1 --max-steps=20 --out-itf=out.itf.json dex.qnt`
 After doing that, inspect the trace in the file `out.itf.json` ->  in order to to visualize trace, you should also install the [VSCode plugin for visualizing traces](https://marketplace.visualstudio.com/items?itemName=informal.itf-trace-viewer).
 
-NOTE: there are still some runtime errors occurring that need to be ironed out.
+## Modeling decisions
+ - upon cancelling, we are not removing any tranches (rather, updating their values to 0)
+ - `MultiHopSwap` is abstracted away by a `SingleHopSwap`
 
 ## Still missing from the model
  - clearing of inactive orders each block
@@ -97,6 +99,5 @@ NOTE: there are still some runtime errors occurring that need to be ironed out.
  - a richer set of invariants
  - `maxAmountOut` parameter for placing limit orders
  - `behindEnemyLines` check
- - currently, `MultiHopSwap` is abstracted away by a `SingleHopSwap`
-    - `SingleHopSwap` needs to be unified with the `SingleHopSwap` postcondition
+ - `SingleHopSwap` needs to be unified with the `SingleHopSwap` postcondition
 

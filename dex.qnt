@@ -553,18 +553,17 @@ module Dex {
 
     pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : Result =
         val tranche = state.tranches.get(msg.trancheKey)
-        val userTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)
-        val withdrawnShares: int =
-            calculatePercentFilled(tranche).mulInt(userTrancheShares.sharesOwned).truncate() - userTrancheShares.sharesWithdrawn
-        val priceTakerToMaker = priceFromTick(tranche.tick)
-        val withdrawnAmountTakerToken: int = intDivDec(withdrawnShares, priceTakerToMaker).truncate()
+        val usersTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)        
+        val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
+        val withdrawnTaker = withdrawnAmounts.taker_token
+        val withdrawnShares = withdrawnAmounts.shares
         
-        // 1) user's balance needs to be updated
-        val updatedUsersCoins = state.coins.get(msg.creator).get(tranche.takerDenomination) + withdrawnAmountTakerToken
+        // 1) user's taker token balance needs to be updated
+        val updatedUsersCoins = state.coins.get(msg.creator).get(tranche.takerDenomination) + withdrawnTaker
         // 2) the reserves taker denom need to be updated
-        val updatedTrancheTakerReserves = tranche.reservesTaker - withdrawnAmountTakerToken
+        val updatedTrancheTakerReserves = tranche.reservesTaker - withdrawnTaker
         // 3) updating the user's shares: increasing the withdrawn shares
-        val updatedUserShares = {sharesWithdrawn: userTrancheShares.sharesWithdrawn + withdrawnShares, ...userTrancheShares}
+        val updatedUserShares = {sharesWithdrawn: usersTrancheShares.sharesWithdrawn + withdrawnShares, ...usersTrancheShares}
         val updatedState = 
         {
             coins: state.coins.setBy(
@@ -580,11 +579,11 @@ module Dex {
     
     pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
         val tranche = before.tranches.get(msg.trancheKey)
-        val userTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
-        val withdrawnShares: int =
-            calculatePercentFilled(tranche).mulInt(userTrancheShares.sharesOwned).truncate() - userTrancheShares.sharesWithdrawn
-        val priceTakerToMaker = priceFromTick(tranche.tick)
-        val withdrawnAmountTakerToken: int = intDivDec(withdrawnShares, priceTakerToMaker).truncate()
+        val usersTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+        val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
+        val withdrawnAmountTakerToken = withdrawnAmounts.taker_token
+        val withdrawnShares = withdrawnAmounts.shares
+                
         
         and {
             // the user's taker balance has increased for what was withdrawn
@@ -645,27 +644,12 @@ action withdrawLimitOrderAction: bool =
 
     pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =        
         val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
+        val users_tranches_shares_before = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
         val users_tranches_before = before.tranchesShares.get(msg.creator).keys()
         val users_tranches_after = after.tranchesShares.get(msg.creator).keys()
-        and {
-            // there is at most one removed tranche from the set of users' tranches
-            // and this is exactly the tranche that the user requested to be cancelled
-            val removedTranches = users_tranches_before.exclude(users_tranches_after)
-            and{
-                size(removedTranches) <= 1,
-                removedTranches.forall(
-                    trancheKey => trancheKey == msg.trancheKey
-                    )
-            },
-            
-            // user received their fair amount of maker tokens back            
-            // this calculation corresponds to the point 2a from the spec document
-            // I am wondering if it is the same as `percentUnfilled * totalAmountOfUserShares` ==> pending confirmation from the dev team
-            val percentUnfilled = calculatePercentUnfilled(before.tranches.get(msg.trancheKey))
-            val userTotalTrancheShare = calculateUserTotalTrancheShare(tranche_before, before.tranchesShares.get(msg.creator))                    
-            // @audit-info I am using "MakerToken" instead of "TokenIn". Is there a good reason to stick to "TokenIn" and "TokenOut" language?
-            val cancelAmountOutMakerToken =                 
-                computeCancelAmountMakerToken(percentUnfilled, userTotalTrancheShare, tranche_before.totalMaker)
+        and {                        
+            // user received their fair amount of maker tokens back                        
+            val cancelAmountOutMakerToken = computeCancelAmountMakerToken(tranche_before, users_tranches_shares_before)
             and{
                 // the user's balance has increased for what was cancelled
                 cancelAmountOutMakerToken == 
@@ -675,23 +659,18 @@ action withdrawLimitOrderAction: bool =
                 cancelAmountOutMakerToken ==
                 before.tranches.get(msg.trancheKey).totalMaker -
                 after.tranches.get(msg.trancheKey).totalMaker
-
             },
             
             // This part corresponds to the point 2b from the spec document
-            val percentFilled = calculatePercentFilled(before.tranches.get(msg.trancheKey))     
-            val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche_before, before.tranchesShares.get(msg.creator))       
-            val cancelAmountOutTakerToken = 
-                // we are using "computeWITHDRAW..." because when cancelling, the user is also withdrawing their unwithdrawn share
-                computeWithdrawTrancheAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche_before.totalTaker)
+            val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche_before, users_tranches_shares_before).taker_token            
 
             and{
                 // the user's taker token balance has increased for what was withdrawn when cancelling
-                cancelAmountOutTakerToken == 
+                withdrawAmountTakerToken == 
                     after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
                     before.coins.get(msg.creator).get(tranche_before.takerDenomination),
                 // the totalTaker has decreased for what was cancelled
-                cancelAmountOutTakerToken ==
+                withdrawAmountTakerToken ==
                     before.tranches.get(msg.trancheKey).totalTaker -
                     after.tranches.get(msg.trancheKey).totalTaker
             },                        
@@ -700,37 +679,35 @@ action withdrawLimitOrderAction: bool =
 
 
     pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : Result =
-        // 1) remove the user's tranches record
+        // 1) update the user's tranchesShares record
         val updatedUsersTranches = 
-            state.tranchesShares.get(msg.creator).keys().exclude(Set(msg.trancheKey)).mapBy(
-            trancheKey => state.tranchesShares.get(msg.creator).get(trancheKey)
+            state.tranchesShares.get(msg.creator).keys().fold(
+                Map(),
+                (acc, trancheKey) => 
+                if (trancheKey == msg.trancheKey)
+                    acc.put(trancheKey, {sharesOwned: 0, sharesWithdrawn: 0})
+                else
+                    acc.put(trancheKey, state.tranchesShares.get(msg.creator).get(trancheKey))
             )
 
-            
-        
-
         val tranche = state.tranches.get(msg.trancheKey)
+        val usersTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)
         // 2) update the user's coins
-        // 2a) calculate the amount of the tranche maker token that the user should receive back
-        val percentUnfilled = calculatePercentUnfilled(tranche)
-        val cancelAmountMakerToken = mulInt(
-            percentUnfilled,
-            state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned
-        ).truncate()
+        // 2a) calculate the amount of the tranche maker token that the user should receive back                                
+        val cancelAmountMakerToken = computeCancelAmountMakerToken(tranche, usersTrancheShares)
         val updatedUserCoinsMaker = state.coins.get(msg.creator).get(msg.trancheKey.makerToken) + cancelAmountMakerToken
+        
         // 2b) calculate the amount of the tranche taker token that the user should receive back (withdraw equivalent)
-        val percentFilled = calculatePercentFilled(tranche)     
-        val userNonWithdrawnTrancheShare = calculateUserNonWithdrawnTrancheShare(tranche, state.tranchesShares.get(msg.creator))       
-        val cancelAmountTakerToken = 
-            computeWithdrawTrancheAmountTakerToken(percentFilled, userNonWithdrawnTrancheShare, tranche.totalTaker)
-        val updatedUserCoinsTaker = state.coins.get(msg.creator).get(msg.trancheKey.takerToken) + cancelAmountTakerToken
+        val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche, usersTrancheShares).taker_token            
+        val updatedUserCoinsTaker = state.coins.get(msg.creator).get(msg.trancheKey.takerToken) + withdrawAmountTakerToken
        
         // 3) update the tranche reserves
         val updatedTranche = {
             reservesMaker: tranche.reservesMaker - cancelAmountMakerToken,
             totalMaker: tranche.totalMaker - state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned,
-            reservesTaker: tranche.reservesTaker - cancelAmountTakerToken,
-            totalTaker: tranche.totalTaker - cancelAmountTakerToken,
+            // @audit-info This is not mentioned in the spec, but it seems necessary
+            reservesTaker: tranche.reservesTaker - withdrawAmountTakerToken,
+            totalTaker: tranche.totalTaker - withdrawAmountTakerToken,
             ...tranche
         }
         
@@ -752,13 +729,23 @@ action withdrawLimitOrderAction: bool =
 
 
      action cancelLimitOrderAction: bool = 
-        val nontrivialTranchesSharesKeys = state.tranchesShares.keys()
-            .filter(creator => state.tranchesShares.get(creator).keys().size() > 0)
+        // only those addresses that have some tranches can cancel them
+        val nontrivialTranchesOwners = state.tranchesShares.keys().filter(
+            creator => 
+            state.tranchesShares.get(creator).keys().size() > 0
+            and 
+            state.tranchesShares.get(creator).keys().exists(
+                trancheKey => 
+                state.tranchesShares.get(creator).get(trancheKey).sharesOwned > 0
+                )            
+            )
         all{        
-            require(nontrivialTranchesSharesKeys.size() > 0),
+            require(nontrivialTranchesOwners.size() > 0),
             // take one of the creators that have some tranches
-            nondet creator = oneOf(nontrivialTranchesSharesKeys)
-            nondet trancheKey = oneOf(state.tranchesShares.get(creator).keys())
+            nondet creator = oneOf(nontrivialTranchesOwners)
+            nondet trancheKey = state.tranchesShares.get(creator).keys().filter(
+                trancheKey => state.tranchesShares.get(creator).get(trancheKey).sharesOwned > 0
+                ).oneOf()
             val cancelLimitOrderMsg = {
                 creator: creator,
                 trancheKey: trancheKey

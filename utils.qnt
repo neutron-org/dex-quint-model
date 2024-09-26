@@ -423,6 +423,16 @@ module utils {
                 totalTaker
             )
         )
+    
+    pure def computeWithdrawAmountTakerToken(tranche: Tranche, userShares: UsersTrancheShares): {taker_token: int, shares: int} = 
+
+        val percentFilled = calculatePercentFilled(tranche)
+        val withdrawAmountInMakerToken = percentFilled.mulInt(userShares.sharesOwned).truncate() - userShares.sharesWithdrawn                
+        val withdrawAmountInTakerToken = intDivDec(withdrawAmountInMakerToken, priceFromTick(tranche.tick)).truncate()
+
+        {taker_token: withdrawAmountInTakerToken, shares: withdrawAmountInMakerToken}
+
+        
 
     // WITHDRAW POOL RELATED FUNCTIONS
 
@@ -515,18 +525,13 @@ module utils {
 
 
     // CANCEL RELATED FUNCTIONS
-    pure def computeCancelAmountMakerToken(percentUnfilled: Dec, userTotalTrancheShare: Dec, totalMaker: int): int =
-        // @audit-issue Already here we are running into rounding problems. Would be great to get the description on rounding
-        // that we discussed in one of the previous meetings
-        truncate(
-            mulInt(
-                mul(
-                    percentUnfilled,
-                    userTotalTrancheShare
-                ),
-                totalMaker
-            )
-        )
+    pure def computeCancelAmountMakerToken(tranche: Tranche, usersShares: UsersTrancheShares): int =     
+        // @audit-info The calculation here is different (but equivalent) than in the spec. 
+        // Are there perhaps some reasons to stick to the spec calculation?   
+        val percentUnfilled = calculatePercentUnfilled(tranche)
+        val sharesOwned = usersShares.sharesOwned
+        percentUnfilled.mulInt(sharesOwned).truncate()        
+        
 
     
 

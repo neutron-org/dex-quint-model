@@ -145,11 +145,12 @@ module types {
     type PoolUpdateDiff = {token0Diff: int, token1Diff: int}
 
     // @audit-issue We must make sure that `Shares` always contains all the Addr (Addr is not removed and is initialized)
+    type UsersTrancheShares = {
+        sharesOwned: int,
+        sharesWithdrawn: int
+    }
     type Shares = Addr -> ShareAccount
-    type ShareAccount = TrancheKey -> {
-            sharesOwned: int,
-            sharesWithdrawn: int
-        }
+    type ShareAccount = TrancheKey -> UsersTrancheShares
 
     type OrderedList[_a] = List[_a]
 
