@@ -1,3 +1,4 @@
+// -*- mode: Bluespec; -*-
 module runs {
     import dec.* from "lib/dec"
     import types.* from "types"
@@ -5,6 +6,8 @@ module runs {
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
+    import dexEvolution.* from "dexEvolution"
+    import postconditions.* from "postconditions"
 
     action unchangedState = all {
         state' = state,

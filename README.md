@@ -10,11 +10,13 @@ This repository is a work-in-progress specification of the Neutron DEX module.
  - `lib`: generally useful Quint functions, for modelling arithmetic operatoins
  - `history`: previous, related models (developed in 2023 during earlier audits), some of them unfinished
  -  The files that make the model in progress:
-    - `dex.qnt`: the model
+    - `dex.qnt`: the core of the model: contains deterministic functions of the form `f(state, message) : updatedState`
+    - `dexEvolution.qnt`: defines the state machine: initial state, `step` action (a choice between different actions to run), and individual actions (that nondeterministically choose parameters for the messages)
+    - `postconditions.qnt`: contains descriptions of different transitions through the relation between the `before` and the `after` state. (It is mostly equivalent to `dex.qnt`, but may be a more intuitive way to grasp the model and its expected properties)
     - `utils.qnt`: helper functions
     - `consts.qnt`: constants used for simulation (eg, max amounts to trade with etc.)
     - `types.qnt`: basic types used in the model
-    - `runs.qnt`: a sequence 
+    - `runs.qnt`: contains sequences of actions and their expected outcomes. Useful for sanity checking the model and for bootstrapping the REPL (more on that below).
 
 ## How To Run Interact with the model
 
@@ -32,7 +34,7 @@ This repository is a work-in-progress specification of the Neutron DEX module.
 
 ```shell
 # Load the dex file
-quint --r dex.qnt::Dex
+quint --r dexEvolution.qnt::dexEvolution
 ```
 
 This command will open Quint REPL. Inside the Quint REPL:
@@ -71,10 +73,9 @@ For diggingg deeper, a REPL may be run with the `--verbosity=5` flag: in that ca
 
 ### Running sample runs
 
-This is already getting verbose. 
-In order to keep it out of the REPL, we use *runs* - one initial run is sketched in [runs.qnt](runs.qnt).
+If we want to experiment inside REPL, but do not want to write each time the initial sequence of steps, we can use *runs* - one initial run is sketched in [runs.qnt](runs.qnt).
 
-Use it inside the REPL and outside of it. 
+
 You can start the REPL with `quint -r runs.qnt::runs`, and inside it call the run `limitOrderTrade`.
 This can be useful when you want to start with a particular state, as reached by a run.
 
@@ -85,7 +86,7 @@ This command will run `limitOrderTrade` and check the assertions in it.
 
 ### Run the Simulator
 The Quint simulator creates a number of behaviors allowed by the model. You can run the simulator by
-`quint run --max-samples=1 --max-steps=20 --out-itf=out.itf.json dex.qnt`
+`quint run --max-samples=1 --max-steps=20 --out-itf=out.itf.json dexEvolution.qnt`
 After doing that, inspect the trace in the file `out.itf.json` ->  in order to to visualize trace, you should also install the [VSCode plugin for visualizing traces](https://marketplace.visualstudio.com/items?itemName=informal.itf-trace-viewer).
 
 ## Modeling decisions
