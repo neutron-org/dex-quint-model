@@ -579,15 +579,13 @@ module Dex {
         ok(updatedState)
     
     pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State) : bool = 
-        val withdrawnShares: int = computeWithdrawTrancheShares(
-            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
-            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranchesShares.get(msg.creator))
-        )
-        val withdrawnAmountTakerToken: int = computeWithdrawTrancheAmountTakerToken(
-            calculatePercentFilled(before.tranches.get(msg.trancheKey)),
-            calculateUserNonWithdrawnTrancheShare(before.tranches.get(msg.trancheKey), before.tranchesShares.get(msg.creator)),
-            before.tranches.get(msg.trancheKey).totalTaker
-        )
+        val tranche = before.tranches.get(msg.trancheKey)
+        val userTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+        val withdrawnShares: int =
+            calculatePercentFilled(tranche).mulInt(userTrancheShares.sharesOwned).truncate() - userTrancheShares.sharesWithdrawn
+        val priceTakerToMaker = priceFromTick(tranche.tick)
+        val withdrawnAmountTakerToken: int = intDivDec(withdrawnShares, priceTakerToMaker).truncate()
+        
         and {
             // the user's taker balance has increased for what was withdrawn
             withdrawnAmountTakerToken == 

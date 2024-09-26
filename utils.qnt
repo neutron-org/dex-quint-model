@@ -10,18 +10,32 @@ module utils {
 
     // TRANCHE related functions
     pure def calculatePercentFilled(t: Tranche) : Dec =
-        fromRatio(t.totalMaker - t.reservesMaker, t.totalMaker)
+        if (t.totalMaker == 0)
+            one
+        else
+            fromRatio(t.totalMaker - t.reservesMaker, t.totalMaker)
     
     pure def calculatePercentUnfilled(t: Tranche) : Dec =
-        fromRatio(t.reservesMaker, t.totalMaker)
+        if (t.totalMaker == 0)
+            zero
+        else
+            fromRatio(t.reservesMaker, t.totalMaker)
+        
     
     pure def calculateUserTotalTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
         val userShare = users_share_account.get(t.trancheKey).sharesOwned
-        fromRatio(userShare, t.totalMaker)
+        if (t.totalMaker == 0)
+            zero
+        else
+            fromRatio(userShare, t.totalMaker)
+        
 
     pure def calculateUserNonWithdrawnTrancheShare(t: Tranche, users_share_account: ShareAccount) : Dec =
         val userShare = users_share_account.get(t.trancheKey).sharesOwned - users_share_account.get(t.trancheKey).sharesWithdrawn
-        fromRatio(userShare, t.totalMaker)
+        if (t.totalMaker == 0)
+            zero
+        else
+            fromRatio(userShare, t.totalMaker)
 
 
     // ------- OTHER
