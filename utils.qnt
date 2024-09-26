@@ -290,13 +290,14 @@ module utils {
                 if (size(appropriateTrancheKeys) > 0)
                     val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys)                
                     val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
+                    val newShares = if (shares.get(creator).keys().contains(trancheKey))
+                        {
+                            sharesOwned: shares.get(creator).get(trancheKey).sharesOwned + amount, 
+                            sharesWithdrawn: shares.get(creator).get(trancheKey).sharesWithdrawn
+                        } else {sharesOwned: amount, sharesWithdrawn: 0}
                     val updatedShares = shares.setBy(
                         creator,
-                        (old => old.set(
-                            trancheKey, 
-                            {sharesOwned: old.get(trancheKey).sharesOwned + amount, ...old.get(trancheKey)}
-                            )
-                        )
+                        (old => old.put(trancheKey, newShares))
                     )
                     (updatedTranches, updatedShares)
 
