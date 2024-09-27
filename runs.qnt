@@ -33,6 +33,7 @@ module runs {
                 state' = updatedState,
                 postconditionOK' = placeLimitOrderPostcondition(state, bobsOrder, updatedState),
                 actionTaken' = {name: "PlaceLimitOrder", message: PlaceLimitOrderSubType(bobsOrder)},
+                actionSuccess' = true,
                 val trancheKey = { id: 1, makerToken: "A", takerToken: "B", tick: 19460 }
                 val updatedTranche = updatedState.tranches.get(trancheKey)
                 all{
@@ -58,6 +59,7 @@ module runs {
             
             all{
                 state' = updatedState,
+                actionSuccess' = true,
                 postconditionOK' = placeLimitOrderPostcondition(state, alicesOrder, updatedState),
                 actionTaken' = {name: "PlaceLimitOrder", message: PlaceLimitOrderSubType(alicesOrder)},
                 val trancheKey = { id: 1, makerToken: "A", takerToken: "B", tick: 19460 }
@@ -83,6 +85,7 @@ module runs {
             val updatedState = placeLimitOrder(state, alicesOrder).state            
             all{
                 state' = updatedState,
+                actionSuccess' = true,
                 postconditionOK' = placeLimitOrderPostcondition(state, alicesOrder, updatedState),
                 actionTaken' = {name: "PlaceLimitOrder", message: PlaceLimitOrderSubType(alicesOrder)},
                 val newTrancheKey = { id: 2, makerToken: "B", takerToken: "A", tick: 20000 }
