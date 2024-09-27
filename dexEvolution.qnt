@@ -27,7 +27,8 @@ module dexEvolution {
         cancelLimitOrderAction,
         withdrawLimitOrderAction,
         advanceTimeAction,
-        withdrawPoolAction
+        withdrawPoolAction,
+        depositAction
     }
 
     
@@ -69,14 +70,28 @@ module dexEvolution {
     }
         
 
-    action depositAction(msg: DepositMsg): bool = {
-      val result = deposit(state, msg)
-      all {
-        actionSuccess' = result.error == "nil",
-        state' = result.state,
-        postconditionOK' = depositPostcondition(state, result.state, msg),
-        actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
-      }
+    action depositAction: bool = all {
+        require(state.pools.keys().size() > 0),
+        nondet poolKey = oneOf(state.pools.keys())
+        nondet doAutoswap = oneOf(Set(true, false))
+        nondet maxAmount = oneOf(1.to(MAX_AMOUNT))
+        val depositAmounts = computeAmountsDeposit(state.pools.get(poolKey).reserves, (maxAmount, maxAmount))
+        nondet c = oneOf(CREATORS)
+        val msg: DepositMsg = {
+            creator: c,
+            tokenPair: poolKey.tokenPair,
+            amountPair: depositAmounts,
+            fee: poolKey.fee,
+            tick: poolKey.tick,
+            autoswap: doAutoswap
+        }
+        val result = deposit(state, msg)
+        all {
+            actionSuccess' = result.error == "nil",
+            state' = result.state,
+            postconditionOK' = depositPostcondition(state, result.state, msg),
+            actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
+        }
     }
 
 
