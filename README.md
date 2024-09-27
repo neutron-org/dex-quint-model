@@ -34,7 +34,7 @@ This repository is a work-in-progress specification of the Neutron DEX module.
 
 ```shell
 # Load the dex file
-quint --r dexEvolution.qnt::dexEvolution
+quint -r dexEvolution.qnt::dexEvolution
 ```
 
 This command will open Quint REPL. Inside the Quint REPL:

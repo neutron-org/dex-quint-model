@@ -8,29 +8,28 @@ module dexEvolution {
     import Dex.* from "dex"
     import postconditions.* from "postconditions"
 
-    // CH: STATE VARIABLES
+    // STATE VARIABLES
     var state: State  
     var postconditionOK: bool
     var actionSuccess: bool
     var actionTaken: Transition
 
-    // CH: STATE MACHINE
-    action step: bool = any {
-        placeLimitOrderAction,
-        cancelLimitOrderAction,
-        withdrawLimitOrderAction,
-        advanceTimeAction,
-        // withdrawAction
-        // depositAction
-        // singlehopSwapAction,
-    }
-
+    // STATE MACHINE
     action init = all {
         state' = initState,
         postconditionOK' = true,
         actionTaken' = {name: "init", message: Init},
         actionSuccess' = true
     }
+
+    action step: bool = any {
+        placeLimitOrderAction,
+        cancelLimitOrderAction,
+        withdrawLimitOrderAction,
+        advanceTimeAction
+    }
+
+    
 
     // ACTIONS
 

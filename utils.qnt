@@ -184,8 +184,7 @@ module utils {
         remainingAmount: int,
         outAmount: int, 
         tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
-        poolUpdates: PoolId -> PoolUpdateDiff,
-        outAmount: int
+        poolUpdates: PoolId -> PoolUpdateDiff        
         } =
         
         val inOutPair = (tokenIn, tokenOut)
@@ -266,6 +265,7 @@ module utils {
                         }
                         
         )
+        
         {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
         
         

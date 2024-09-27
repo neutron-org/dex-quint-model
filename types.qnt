@@ -155,24 +155,24 @@ module types {
     type OrderedList[_a] = List[_a]
 
     type State = {
-        // 
-        tranches: TrancheKey -> Tranche,
+        
+        tranches: TrancheKey -> Tranche,        
+        tranchesShares: Shares,        
+
+        poolShares: Addr -> PoolId -> int,
+        pools: PoolId -> Pool, 
+
         // balances of all the users in the system
         coins: Coins,
-        tranchesShares: Shares,
+
         // we will model time by blocks (integer value). 
         // In the code, it is done through BlockTime. Departing from that. 
         // @audit-info could that cause any issue down the line?
-        blockNumber: BlockTime,
-        poolShares: Addr -> PoolId -> int,
-        pools: PoolId -> Pool,        
+        blockNumber: BlockTime,       
 
         // helper state variables, to be used in invariants
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
         poolWithdrawns: Addr -> PoolId -> (int, int)
-
-
-
     }
 
     type Result = {state: State, error: str}
