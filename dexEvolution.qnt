@@ -26,31 +26,48 @@ module dexEvolution {
         placeLimitOrderAction,
         cancelLimitOrderAction,
         withdrawLimitOrderAction,
-        advanceTimeAction
+        advanceTimeAction,
+        withdrawPoolAction
     }
 
     
 
     // ACTIONS
 
-    action withdrawAction: bool = {
-        
-    // @audit-info Incorporate in the evolution
-      val msg = {
-        creator: "",
-        tokenPair: ("", ""),
-        amount: 1,
-        tick: 0,
-        fee: 0
-      }
-      val result = withdrawPool(state, msg)
-      all {        
-        actionSuccess' = result.error == "nil",
-        state' = result.state,
-        postconditionOK' = withdrawPoolPostcondition(state, result.state, msg),
-        actionTaken' = {name: "withdraw", message: WithdrawPoolSubType(msg)}
-      }
+    action withdrawPoolAction: bool = all {
+        // mapping from creators to sets of pools in which they have >0 share
+        val relevantCreatorsAndPools = state.poolShares.keys().fold(
+            Map(), // a map from creators to pools in which they have non-trivial stake
+            (acc, c) => 
+            val nonTrivialPools = state.poolShares.get(c).keys().filter(p => state.poolShares.get(c).get(p) > 0)
+            if (nonTrivialPools.size() > 0)
+                acc.put(c, nonTrivialPools)
+            else
+                acc
+        )
+        all {
+            require(relevantCreatorsAndPools.keys().size() > 0),        
+            nondet creator = oneOf(relevantCreatorsAndPools.keys())
+            nondet poolKey = oneOf(relevantCreatorsAndPools.get(creator))
+            nondet amountToWithdraw = oneOf(1.to(state.poolShares.get(creator).get(poolKey)))
+            // @audit-info Incorporate in the evolution
+            val msg = {
+                creator: creator,
+                tokenPair: poolKey.tokenPair,
+                amount: amountToWithdraw,
+                tick: poolKey.tick,
+                fee: poolKey.fee
+            }
+            val result = withdrawPool(state, msg)
+            all {        
+                actionSuccess' = result.error == "nil",
+                state' = result.state,
+                postconditionOK' = withdrawPoolPostcondition(state, result.state, msg),
+                actionTaken' = {name: "withdraw", message: WithdrawPoolSubType(msg)}
+            }
+        }
     }
+        
 
     action depositAction(msg: DepositMsg): bool = {
       val result = deposit(state, msg)
