@@ -8,7 +8,6 @@ This repository is a work-in-progress specification of the Neutron DEX module.
 ## Repository Structure
 
  - `lib`: generally useful Quint functions, for modelling arithmetic operatoins
- - `history`: previous, related models (developed in 2023 during earlier audits), some of them unfinished
  -  The files that make the model in progress:
     - `dex.qnt`: the core of the model: contains deterministic functions of the form `f(state, message) : updatedState`
     - `dexEvolution.qnt`: defines the state machine: initial state, `step` action (a choice between different actions to run), and individual actions (that nondeterministically choose parameters for the messages)
