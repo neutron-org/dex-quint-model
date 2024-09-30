@@ -96,12 +96,58 @@ module utils {
             ((tokenOut, tokenIn), -tick)         
     
     
+    pure def swapInternallyConsistent(msg: PlaceLimitOrderMsg, swapUpdate: SwapUpdateInfo): bool =
+        // sanity check that the output from the swap is internally consistent: what user got from pools and tranches
+        // should correspond to the outAmount
+        val poolsUpdateInfo = swapUpdate.poolUpdates
+        val tranchesUpdateInfo = swapUpdate.tranchesUpdates
+        val isPairNormalized = tokenLT(msg.tokenIn, msg.tokenOut, TOKEN_NUM_VALUES)
+        val userGotFromPools = poolsUpdateInfo.keys().fold(
+            0,
+            (acc, poolId) => 
+            val userGot = 
+                if (isPairNormalized) 
+                    abs(poolsUpdateInfo.get(poolId).token1Diff)
+                else
+                    abs(poolsUpdateInfo.get(poolId).token0Diff)                
+            acc + userGot
+        )
+        val userGotFromTranches = tranchesUpdateInfo.keys().fold(
+            0,
+            (acc, trancheKey) => 
+            // the abs is because of the way the diff is expressed as negative to signify that the amount was taken from the tranche
+            val userGot = abs(tranchesUpdateInfo.get(trancheKey).makerReservesDiff)
+            
+            acc + userGot
+        )
+        
+        // the tranches and pool updates are in line with what the user received
+        userGotFromPools + userGotFromTranches == swapUpdate.outAmount    
+
     
-    pure def calculateTrancheIndex(makerToken: Token, takerToken: Token, tick: TickIndex, existingTranchesKeys: Set[TrancheKey]): int = 
+    pure def calculateTrancheKey(makerToken: Token, takerToken: Token, tick: TickIndex, tranches: TrancheKey -> Tranche, expirationBlockTime: BlockTime): TrancheKey = 
     
-        // TODO: NOT-IMPLEMENTED
-        -1
-    
+        val appropriateTrancheKeys = tranches.keys().filter(key => 
+            and{
+                key.makerToken == makerToken, 
+                key.takerToken == takerToken,
+                key.tick == tick, 
+                tranches.get(key).isFresh,
+                tranches.get(key).expirationTime == expirationBlockTime
+            }
+        )            
+        
+        if (size(appropriateTrancheKeys) > 0)
+            getMinimumTrancheKey(appropriateTrancheKeys)                                        
+        else
+            val maxTrancheId = tranches.keys().fold(
+                0,
+                (acc, key) => if (key.id > acc) key.id else acc
+            )
+            // in the implementation, the id is connected to the block number. Here, we use increasing values
+            {makerToken: makerToken, takerToken: takerToken, tick: tick, id: maxTrancheId + 1}
+   
+   
     // given an amount in the taker token, return how much of it the tranche can exchange and the update amount of the tranche
     pure def calculateTrancheExchangableAmount(amount: int, tranche: Tranche): 
     {
@@ -180,12 +226,7 @@ module utils {
         maxPriceTick: int,
         // TODO: maxAmountOut parameter not taken into account
         maxAmountOut: int 
-    ): {
-        remainingAmount: int,
-        outAmount: int, 
-        tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
-        poolUpdates: PoolId -> PoolUpdateDiff        
-        } =
+    ): SwapUpdateInfo =
         
         val inOutPair = (tokenIn, tokenOut)
         // I need this for pools because they are stored only under normalized pairs
@@ -270,6 +311,7 @@ module utils {
         
         
 pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
+        
         // updated pools equal the 'after' state, the rest is unchanged
         before.pools.keys().forall(poolId => 
             if (poolsUpdates.keys().contains(poolId))
@@ -324,87 +366,69 @@ pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId 
     pure def poolSwap(state: State, poolId: PoolId, poolUpdateDiff: PoolUpdateDiff) : State = 
         state
 
+    pure def tokenInSpentBasedOnOrderType(orderType: LimitOrderType, amountIn: int, remainingAmount: int): int = 
+        match orderType {
+            | GoodTillCancelled => amountIn
+            | FillOrKill => 0
+            | ImmediateOrCancel => amountIn - remainingAmount
+            // not taking into account if the block is given in the past, assuming the code forbids this
+            | GoodTillTime(_) => amountIn
+            | JustInTime => amountIn
+        }
+        
+
     pure def trancheTrade(state: State, trancheKey: TrancheKey, trancheUpdateDiff: TrancheUpdateDiff) : State = state
 
-    pure def handleRemainingLimitOrderAmount(state: State, msg: PlaceLimitOrderMsg, amount: int, expirationBlockTime: BlockTime) : State =
-        val tranches = state.tranches
+    pure def placeRemainingLimitOrderAmount(tranches: TrancheKey->Tranche, shares: Shares, msg: PlaceLimitOrderMsg, amount: int, expirationBlockTime: BlockTime)
+    : {tranches: TrancheKey->Tranche, tranchesShares: Shares} =
+        
+        if (amount == 0) {tranches: tranches, tranchesShares: shares}
+        else 
         // now it is reversed: the remaining amount of the tokenIn becomes a maker token of a new tranche
         val makerToken = msg.tokenIn
         // and the tokenOut, the one that the creator wants to receive, becomes the taker token
         val takerToken = msg.tokenOut
         val tick = msg.tick
-        val shares = state.tranchesShares
         val creator = msg.creator
-        if (amount <= 0)
-            state
-        else
-            // looking for an existing tranche under which we would place the maker order 
-            val appropriateTrancheKeys = tranches.keys()
-                .filter(key => 
-                    and{
-                        key.makerToken == makerToken, 
-                        key.takerToken == takerToken,
-                        key.tick == tick, 
-                        tranches.get(key).isFresh,
-                        tranches.get(key).expirationTime == expirationBlockTime
-                    }
-                )            
-            val tranchesAndSharesUpdate = 
-                if (size(appropriateTrancheKeys) > 0)
-                    val trancheKey = getMinimumTrancheKey(appropriateTrancheKeys)                
-                    val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
-                    val newShares = if (shares.get(creator).keys().contains(trancheKey))
-                        {
-                            sharesOwned: shares.get(creator).get(trancheKey).sharesOwned + amount, 
-                            sharesWithdrawn: shares.get(creator).get(trancheKey).sharesWithdrawn
-                        } else {sharesOwned: amount, sharesWithdrawn: 0}
-                    val updatedShares = shares.setBy(
-                        creator,
-                        (old => old.put(trancheKey, newShares))
-                    )
-                    (updatedTranches, updatedShares)
-
-                
-                else
-                    val maxTrancheId = tranches.keys().fold(
-                        0,
-                        (acc, key) => if (key.id > acc) key.id else acc
-                    )
-                    // in the implementation, the id is connected to the block number. Here, we use increasing values
-                    val newKey = {makerToken: makerToken, takerToken: takerToken, tick: tick, id: maxTrancheId + 1}
-                    val newTranche = {
-                        isFresh: true,
-                        reservesMaker: amount,
-                        reservesTaker: 0,
-                        totalMaker: amount,
-                        totalTaker: 0,
-                        tick: tick,
-                        expirationTime: expirationBlockTime,
-                        trancheKey: newKey,
-                        makerDenomination: makerToken,
-                        takerDenomination: takerToken
-                    }
-                    val newShareAccount = {sharesOwned: amount, sharesWithdrawn: 0}
-
-                    
-                    val updatedTranches = tranches.put(newKey, newTranche)
-                    val updatedShares = shares.setBy(
-                            creator,
-                            old => old.put(newKey, newShareAccount)
-                        )
-                    (updatedTranches, updatedShares)
-                // returning the state
-                val updatedCoins = state.coins.setBy(
-                    msg.creator, 
-                    // we spent all coins by placing it as new liquidity
-                    old => old.set(msg.tokenIn, 0)                    
-                    )
+        
+        val trancheKey = calculateTrancheKey(makerToken, takerToken, tick, tranches, expirationBlockTime)                      
+        val tranchesAndSharesUpdate = 
+        if (tranches.keys().contains(trancheKey)) // if the key was one of the previously existing
+            val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
+            val newShares = if (shares.get(creator).keys().contains(trancheKey))
                 {
-                    tranches: tranchesAndSharesUpdate._1,
-                    tranchesShares: tranchesAndSharesUpdate._2,
-                    coins: updatedCoins,
-                    ...state
-                }
+                    sharesOwned: shares.get(creator).get(trancheKey).sharesOwned + amount, 
+                    sharesWithdrawn: shares.get(creator).get(trancheKey).sharesWithdrawn
+                } else {sharesOwned: amount, sharesWithdrawn: 0}
+            val updatedShares = shares.setBy(
+                creator,
+                (old => old.put(trancheKey, newShares))
+            )
+            {tranches: updatedTranches, tranchesShares:updatedShares}
+        // if we are adding a fully new tranche
+        else                    
+            val newTranche = {
+                isFresh: true,
+                reservesMaker: amount,
+                reservesTaker: 0,
+                totalMaker: amount,
+                totalTaker: 0,
+                tick: tick,
+                expirationTime: expirationBlockTime,
+                trancheKey: trancheKey,
+                makerDenomination: makerToken,
+                takerDenomination: takerToken
+            }
+            val newShareAccount = {sharesOwned: amount, sharesWithdrawn: 0}                    
+            val updatedTranches = tranches.put(trancheKey, newTranche)
+            val updatedShares = shares.setBy(
+                    creator,
+                    old => old.put(trancheKey, newShareAccount)
+                )
+            {tranches: updatedTranches, tranchesShares: updatedShares}
+
+        tranchesAndSharesUpdate
+            
                 
                 
 

@@ -84,9 +84,7 @@ module postconditions {
 
 
 
-// @audit-info This postcondition needs to be updated: currently only takes into account good-till-cancelled orders
  pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State) : bool =
-        // TODO: incorporate also here different types of orders (as it was done in the action)
         val fulfilledOrderInfo = swap(
             msg.tokenIn,
             msg.tokenOut,
@@ -102,70 +100,63 @@ module postconditions {
         val remainingAmount = fulfilledOrderInfo.remainingAmount
         val outAmount = fulfilledOrderInfo.outAmount
 
-        
-        and{
+
+        // A not fully filled fillOrKill: the state is not changed at all
+        if (remainingAmount > 0 and msg.orderType == FillOrKill)
+            before == after
+        else 
+        and {
+            // pools and tranches are updated correctly
             validatePoolsUpdates(before, after, poolsUpdateInfo),
             validateTrachesUpdates(before, after, tranchesUpdateInfo),
 
-            // summing up the total amount that the user received and checking if that is what the user has now
-            val isPairNormalized = tokenLT(msg.tokenIn, msg.tokenOut, TOKEN_NUM_VALUES)
-            val userGotFromPools = poolsUpdateInfo.keys().fold(
-                0,
-                (acc, poolId) => 
-                val userGot = 
-                    if (isPairNormalized) 
-                        abs(poolsUpdateInfo.get(poolId).token1Diff)
-                    else
-                        abs(poolsUpdateInfo.get(poolId).token0Diff)                
-                acc + userGot
-            )
-            val userGotFromTranches = tranchesUpdateInfo.keys().fold(
-                0,
-                (acc, trancheKey) => 
-                // the abs is because of the way the diff is expressed as negative to signify that the amount was taken from the tranche
-                val userGot = abs(tranchesUpdateInfo.get(trancheKey).makerReservesDiff)
-                
-                acc + userGot
-            )
-            val userDiffOut = after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
-            // user should have received the correct amount
-            outAmount == userDiffOut,
+            swapInternallyConsistent(msg, fulfilledOrderInfo),
 
-            // if there was still some extra amount, it was added to limit orders
-            implies(            
-                remainingAmount > 0,
+            
+            // if there was still some extra amount, and we are not in the immediateOrCancel case, then it was added as a new tranche
+            implies (
+                remainingAmount > 0 and not(msg.orderType == ImmediateOrCancel),
+                val userGotRest = if (msg.orderType == GoodTillCancelled) outAmount else 0
+                val userDiffOut = after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
                 val makerToken = msg.tokenIn
                 val takerToken = msg.tokenOut
-                val trancheIndex = calculateTrancheIndex(makerToken, takerToken, msg.tick, before.tranches.keys())
-                val trancheKey = {
-                    makerToken: makerToken,
-                    takerToken: takerToken,
-                    tick: msg.tick,
-                    id: trancheIndex
+                val blockExpirationTime = match msg.orderType {
+                    | GoodTillTime(time) => time
+                    | GoodTillCancelled => -1
+                    | JustInTime => before.blockNumber + 1
+                    | _ => -1
                 }
-
-                and{
+                val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.tick, before.tranches, blockExpirationTime)                
+                and{            
+                    // user should have received the correct amount
+                    outAmount + userGotRest == userDiffOut,
                     // the tranche key exists in the after state
                     after.tranches.keys().contains(trancheKey),
 
-                // the amount in this tranched is increased by the remainingAmount
-                val totalMakerAmountBefore = if (before.tranches.keys().contains(trancheKey)) before.tranches.get(trancheKey).totalMaker else 0
-                after.tranches.get(trancheKey).totalMaker == totalMakerAmountBefore + remainingAmount,
+                    // the amount in this tranche is increased by the remainingAmount
+                    val totalMakerAmountBefore = if (before.tranches.keys().contains(trancheKey)) before.tranches.get(trancheKey).totalMaker else 0
+                    after.tranches.get(trancheKey).totalMaker == totalMakerAmountBefore + remainingAmount,
 
-                // the user's shares now exists
-                after.tranchesShares.get(msg.creator).keys().contains(trancheKey),
+                    // the user's shares now exists
+                    after.tranchesShares.get(msg.creator).keys().contains(trancheKey),
 
-                // the tranche shares are updated
-                val totalSharesBefore = 
-                    if (before.tranches.keys().contains(trancheKey) and before.tranchesShares.get(msg.creator).keys().contains(trancheKey)) 
-                        before.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned 
-                    else 0
-                val sharesDiff = after.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned - 
-                                 totalSharesBefore
-                sharesDiff == remainingAmount                                                                    
-
+                    // the tranche shares are updated
+                    val totalSharesBefore = 
+                        if (before.tranches.keys().contains(trancheKey) and before.tranchesShares.get(msg.creator).keys().contains(trancheKey)) 
+                            before.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned 
+                        else 0
+                    val sharesDiff = after.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned - totalSharesBefore
+                    sharesDiff == remainingAmount                                                                    
                 }
-            ) 
+            ),
+
+            // checking that the user's amount got updated correctly
+            val tokenOutGained = outAmount
+            val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
+            tokenOutGained == after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
+            and 
+            tokenInSpent == before.coins.get(msg.creator).get(msg.tokenIn) - after.coins.get(msg.creator).get(msg.tokenIn)
+  
         } 
 
 pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): bool =

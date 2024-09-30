@@ -31,7 +31,6 @@ module Dex {
 
     
   
-    //    CH: DEPOSITING INTO POOLS
     pure def deposit(state: State, msg: DepositMsg) : Result = {
       val pair =  orderTokenPair(msg.tokenPair)
       val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
@@ -58,7 +57,6 @@ module Dex {
     
     
     
-    //    CH: PLACING A LIMIT ORDER
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : Result =        
         val fulfilledOrderInfo = swap(
             msg.tokenIn, 
@@ -67,76 +65,58 @@ module Dex {
             state.pools,
             msg.amountIn,
             msg.tick,
-            msg.maxAmountOut
-            
+            msg.maxAmountOut            
         )
+        
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
         val remainingAmount = fulfilledOrderInfo.remainingAmount
-        val userReceived = fulfilledOrderInfo.outAmount
+        val tokenOutReceived = fulfilledOrderInfo.outAmount
 
-        // 1) update the pools states
-        val updatedPools = updatePools(state.pools, poolsUpdateInfo)
-        
-
-        // 2) update the tranches states
-        val tradeUpdatedTranches = updateTranches(state.tranches, tranchesUpdateInfo)
-        
-
-        // 3) update the user's balance
-        val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
-            token => 
-            if (token == msg.tokenOut)
-                state.coins.get(msg.creator).get(token) + userReceived
-            else if (token == msg.tokenIn)
-                state.coins.get(msg.creator).get(token) - (msg.amountIn - remainingAmount)
-            else
-                state.coins.get(msg.creator).get(token)                
-        )
-
-
-        val tradeUpdatedState = {
-            tranches: tradeUpdatedTranches,
-            pools: updatedPools,
-            coins: state.coins.set(msg.creator, updatedUserCoins),
-            ...state
-        }
-        // Different message types handle remaining amount differently:
-        match msg.orderType {
-            // GoodTillCancelled orders add it to liquidity
-            | GoodTillCancelled =>
-                val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount, -1)
-                ok(newTrancheUpdatedState)
-
-            // GoodTillTime orders add it to liquidity, but with the specified expiration time
-            | GoodTillTime(block_time) =>
-                val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount, block_time)
-                ok(newTrancheUpdatedState)
+        if (remainingAmount > 0 and msg.orderType == FillOrKill)
+            {state: state, error: "FillOrKill: not enough liquidity"}
+        else
+            // 1) update the pools states
+            val updatedPools = updatePools(state.pools, poolsUpdateInfo)
             
-            // JustInTime order add it to liquidity, but with the next block as expiration time
-            | JustInTime =>
-                val newTrancheUpdatedState = handleRemainingLimitOrderAmount(tradeUpdatedState, msg, remainingAmount, state.blockNumber + 1)
-                ok(newTrancheUpdatedState)
+            // 2) update the tranches states
+            val tradeUpdatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, tranchesUpdateInfo)
+            // 2a) handle the remaining amount and update tranches accordingly
+            val tranchesSharesUpdate = 
+                // no new updates to tranches if the type is ImmediateOrCancel
+                if (msg.orderType == ImmediateOrCancel) 
+                    {tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares}
+                else 
+                    val expirationBlock = match msg.orderType {
+                        | GoodTillTime(block_time) => block_time
+                        | JustInTime => state.blockNumber + 1
+                        | GoodTillCancelled => -1 
+                        | _ => -1 // unreachable
+                    }
+                    placeRemainingLimitOrderAmount(tradeUpdatedTranches, state.tranchesShares, msg, remainingAmount, expirationBlock)
 
-
-            // FillOrKill orders fail if there is remaining amount
-            | FillOrKill =>
-                if (remainingAmount > 0)
-                    {state: tradeUpdatedState, error: "FillOrKill: not enough liquidity"}
+            
+            val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
+            // 3) update the user's balance
+            val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
+                token => 
+                if (token == msg.tokenOut)
+                    state.coins.get(msg.creator).get(token) + tokenOutReceived
+                else if (token == msg.tokenIn)
+                    state.coins.get(msg.creator).get(token) - tokenInSpent
                 else
-                    ok(tradeUpdatedState)
+                    state.coins.get(msg.creator).get(token)                
+            )
 
-            // ImmediateOrCancel orders return the remaining amount to the user
-            | ImmediateOrCancel =>
-                val stateRemainingAmountReturned = {
-                    coins: tradeUpdatedState.coins.setBy(
-                        msg.creator, 
-                        old => old.set(msg.tokenIn, old.get(msg.tokenIn) + remainingAmount)),
-                    ...tradeUpdatedState,
-                }
-                ok(tradeUpdatedState)
-            | _ => ok(tradeUpdatedState)
-        }
+
+            val new_state = {
+                tranches: tranchesSharesUpdate.tranches,
+                tranchesShares: tranchesSharesUpdate.tranchesShares,
+                pools: updatedPools,
+                coins: state.coins.set(msg.creator, updatedUserCoins),
+                ...state
+            }
+            ok(new_state)
     
     pure def singlehopSwap(state: State, msg: SwapMsg) : Result = {
       val inAmount = msg.amount

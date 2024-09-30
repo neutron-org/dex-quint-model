@@ -152,6 +152,13 @@ module types {
     type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> UsersTrancheShares
 
+    type SwapUpdateInfo = {
+        remainingAmount: int,
+        outAmount: int, 
+        tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
+        poolUpdates: PoolId -> PoolUpdateDiff        
+        }
+
     type OrderedList[_a] = List[_a]
 
     type State = {
