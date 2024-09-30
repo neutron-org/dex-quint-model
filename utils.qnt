@@ -564,31 +564,7 @@ pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId 
         else 
             -poolTick + fee
 
-    // @audit-issue Potentially, we need to add a break after we are past limitPrice --> checking with the dev team
-    pure def poolsLiquidityIteration(pair: (Token, Token), tokenA: Token, pools: PoolId -> Pool, amount: int): 
-      {remainingPools: Set[PoolId], inAmount: int, outAmount: int, changes: PoolId -> (int, int)} =
-        val token0to1 = pair._1 == tokenA
-        val relevantPools = pools.keys().filter(id => id.tokenPair == pair)
-        1.to(size(relevantPools)).fold(
-            {remainingPools: relevantPools, inAmount: amount, outAmount: 0, changes: relevantPools.mapBy(pool => (0, 0))}, 
-            (acc, _) =>
-                // Compute cheapest exchange rate among the remaining pools
-                val poolId =  minTickPool(acc.remainingPools, token0to1)
-                val reserveTick = computeReserveTick(poolId.tick, token0to1, poolId.fee)
-                val exchangeRate = priceFromTick(reserveTick)
-                // Compute the inAmount and outAmount from the previously selected pool
-                val reservesTokenB = if (token0to1) pools.get(poolId).reserves._2 else pools.get(poolId).reserves._1
-                val requiredAmount = acc.inAmount.fromInt().mul(exchangeRate).truncate()
-                val inAmount = if (requiredAmount <= reservesTokenB) acc.inAmount else reservesTokenB
-                val outAmount = inAmount.fromInt().mul(exchangeRate).truncate()
-                // update the acc value
-                {
-                    remainingPools: acc.remainingPools.setRemove(poolId),
-                    inAmount: acc.inAmount - inAmount,
-                    outAmount: acc.outAmount + outAmount,
-                    changes: acc.changes.set(poolId, if (token0to1) (inAmount, outAmount) else (outAmount, inAmount))
-                }
-        )
+ 
 
     pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int) :
       PoolId -> {amounts: (int, int), swaps: bool} = 
