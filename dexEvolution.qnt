@@ -28,7 +28,8 @@ module dexEvolution {
         withdrawLimitOrderAction,
         advanceTimeAction,
         withdrawPoolAction,
-        depositAction
+        depositAction,
+        singlehopSwapAction
     }
 
     
@@ -135,14 +136,31 @@ module dexEvolution {
         }   
 
 
-    action singlehopSwapAction(msg: SwapMsg): bool = {
-      val result = singlehopSwap(state, msg)
-      all {
-        require(result.error=="nil"),
-        state' = result.state,
-        postconditionOK' = singlehopSwapPostcondition(state, result.state, msg),
-        actionTaken' = {name: "swap", message: SwapSubType(msg)}
-      }
+    
+    
+    action singlehopSwapAction: bool = all {
+        require(state.pools.keys().size() > 0),
+        // we will model swapping only the token pairs for which pools already exist
+        nondet existingPair = state.pools.keys().map(k => k.tokenPair).oneOf()
+        // becuase pools are indexed by sorted pairs, we need to be able to create the opposite pair, too
+        nondet switchPair = oneOf(Set(true, false))
+        val pair = if (switchPair) (existingPair._2, existingPair._1) else existingPair
+        nondet creator = oneOf(CREATORS)
+        nondet amount = 1.to(MAX_AMOUNT).oneOf()
+        nondet tick = oneOf(TICKS)
+        val msg = {
+            creator: creator,
+            tokenPair: pair,
+            amount: amount,
+            limitPriceTick: tick
+        }
+        val result = singlehopSwap(state, msg)
+        all {
+            actionSuccess' = result.error=="nil",
+            state' = result.state,
+            postconditionOK' = singlehopSwapPostcondition(state, result.state, msg),
+            actionTaken' = {name: "swap", message: SwapSubType(msg)}
+        }
     }
 
 
