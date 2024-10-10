@@ -165,18 +165,12 @@ module dexEvolution {
 
 
 action withdrawLimitOrderAction: bool = 
-    val creatorsWithTrancheKeys = CREATORS.fold(
-        Map(),
-        (acc, creator) => 
-            if (state.tranchesShares.keys().contains(creator) and state.tranchesShares.get(creator).keys().size() > 0)
-                acc.put(creator, state.tranchesShares.get(creator).keys())
-            else
-                acc
-    )
+    val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
     all {
-        require(size(creatorsWithTrancheKeys.keys()) > 0),
-        nondet creator = oneOf(creatorsWithTrancheKeys.keys())
-        nondet trancheKey = oneOf(creatorsWithTrancheKeys.get(creator))
+        require(size(creatorKeyTuples) > 0),
+        nondet chosenTuple = oneOf(creatorKeyTuples)
+        val creator = chosenTuple._1
+        val trancheKey = chosenTuple._2
         val withdrawLimitOrderMsg = {
             creator: creator,
             trancheKey: trancheKey
@@ -197,24 +191,17 @@ action withdrawLimitOrderAction: bool =
         }
     }
 
-     action cancelLimitOrderAction: bool = 
-        // only those addresses that have some tranches can cancel them
-        val nontrivialTranchesOwners = state.tranchesShares.keys().filter(
-            creator => 
-            state.tranchesShares.get(creator).keys().size() > 0
-            and 
-            state.tranchesShares.get(creator).keys().exists(
-                trancheKey => 
-                state.tranchesShares.get(creator).get(trancheKey).sharesOwned > 0
-                )            
-            )
+    
+
+    action cancelLimitOrderAction: bool = 
+    // only those addresses that have some tranches can cancel them
+        val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
         all{        
-            require(nontrivialTranchesOwners.size() > 0),
+            require(size(creatorKeyTuples) > 0),
             // take one of the creators that have some tranches
-            nondet creator = oneOf(nontrivialTranchesOwners)
-            nondet trancheKey = state.tranchesShares.get(creator).keys().filter(
-                trancheKey => state.tranchesShares.get(creator).get(trancheKey).sharesOwned > 0
-                ).oneOf()
+            nondet chosenTuple = oneOf(creatorKeyTuples)
+            val creator = chosenTuple._1
+            val trancheKey = chosenTuple._2
             val cancelLimitOrderMsg = {
                 creator: creator,
                 trancheKey: trancheKey
@@ -263,8 +250,8 @@ action withdrawLimitOrderAction: bool =
 
     // Invariant: coin and share balances are zero or greater 
     val nonNegativeBalances = CREATORS.forall(
-        creator => val coins = state.coins.get(creator)
-                   val shares = state.poolShares.get(creator)
+        creator => val coins = state.coins.getOrElse(creator, Map())
+                   val shares = state.poolShares.getOrElse(creator, Map())
                    coins.keys().forall(token => coins.get(token) >= 0) and
                    shares.keys().forall(share => shares.get(share) >= 0))
     

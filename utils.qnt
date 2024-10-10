@@ -248,8 +248,7 @@ module utils {
             {
                 tranchesUpdates: Map(), 
                 poolUpdates: Map(), 
-                remainingAmountToExchange: amount,
-                outAmount: 0,
+                remainingAmountToExchange: amount,                
                 remainingTranches: relevantTranches, 
                 remainingPools: relevantPools,
                 outAmount: 0},
@@ -477,6 +476,22 @@ pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId 
       amount0Discount.mul(residualAmounts._1.fromInt()).add(priceLowerTakerToMaker.mul(residualAmounts._2.fromInt())).truncate()
 
     // WITHDRAW TRANCHE RELATED FUNCTIONS
+
+    // Assembles a set of tuples of creator and trancheKey, where the creator has some ownership in the tranche
+    // Useful when nondeterministically selecting a creator and a tranche inside withdraw or cancel action
+    pure def nontrivialTranchesOwners(tranchesShares: Shares, users: Set[Addr]): Set[(Addr, TrancheKey)] = 
+        users.fold(
+            Set(),
+            (acc, user) => val newTuples = 
+                // for each creator's shares
+                tranchesShares.getOrElse(user, Map()).keys()
+                    // take into account those shares in which the creator has some ownership
+                    .filter(trancheKey => tranchesShares.get(user).get(trancheKey).sharesOwned > 0)
+                    // and then create a tuple of creator and trancheKey
+                    .map(trancheKey => (user, trancheKey))
+                acc.union(newTuples)
+        )
+
     pure def computeWithdrawTrancheShares(percentFilled: Dec, userNonWithdrawnTrancheShare: Dec): int =
         // @audit-issue Should this be truncate? Rounding discussion
         truncate(
