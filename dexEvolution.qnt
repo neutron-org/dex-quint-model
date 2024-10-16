@@ -16,7 +16,13 @@ module dexEvolution {
 
     // STATE MACHINE
     action init = all {
-        state' = initState,
+        // @audit-issue This should be the correct spec, but replaced by a simpler, hard-coded one due to
+        // a problem in the simulator: https://github.com/informalsystems/quint/issues/1530
+        // val possibleTokenAccounts = setOfMaps(CREATORS, setOfMaps(TOKENS, INITIAL_CREATORS_BALANCES))
+        // nondet initCoins = oneOf(possibleTokenAccounts)
+        val bal = INITIAL_CREATOR_BALANCE_TEMP
+        val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, Map("A" -> bal, "B" -> bal)))        
+        state' = initState(initCoins),
         postconditionOK' = true,
         actionTaken' = {name: "init", message: Init},
         actionSuccess' = true
@@ -73,11 +79,31 @@ module dexEvolution {
 
     action depositAction: bool = all {
         require(state.pools.keys().size() > 0),
-        nondet poolKey = oneOf(state.pools.keys())
         nondet doAutoswap = oneOf(Set(true, false))
-        nondet maxAmount = oneOf(1.to(MAX_AMOUNT))
-        val depositAmounts = computeAmountsDeposit(state.pools.get(poolKey).reserves, (maxAmount, maxAmount))
-        nondet c = oneOf(CREATORS)
+        // a set of {creator: Addr, poolKey: PoolKey} records containing all the pools whose tokens are 
+        // the ones in which the creator has >0 coins. We do so by iterating first over creators, and then
+        // over pools, and checking if the creator has >0 coins in at least of of the tokens of the pool.
+        val creatorsAndPools = CREATORS.fold(
+            Set(),  
+            (acc, c) => acc.union(
+                state.pools.keys().fold(
+                    Set(),
+                    (acc2, poolKey) => 
+                    if (state.coins.get(c).get(poolKey.tokenPair._1) > 0 or state.coins.get(c).get(poolKey.tokenPair._2) > 0)
+                        acc2.union(Set({creator: c, poolKey: poolKey}))
+                    else
+                        acc2
+                )
+            )
+        )
+        nondet creatorAndPool = oneOf(creatorsAndPools)
+        val poolKey = creatorAndPool.poolKey        
+        val c = creatorAndPool.creator
+        nondet amountToken1 = oneOf(0.to(state.coins.get(c).get(poolKey.tokenPair._1)))
+        nondet amountToken2 = oneOf(0.to(state.coins.get(c).get(poolKey.tokenPair._2)))
+        
+        val depositAmounts = computeAmountsDeposit(state.pools.get(poolKey).reserves, (amountToken1, amountToken2))
+        
         val msg: DepositMsg = {
             creator: c,
             tokenPair: poolKey.tokenPair,
@@ -88,6 +114,7 @@ module dexEvolution {
         }
         val result = deposit(state, msg)
         all {
+            require(depositAmounts._1 > 0 or depositAmounts._2 > 0),
             actionSuccess' = result.error == "nil",
             state' = result.state,
             postconditionOK' = depositPostcondition(state, result.state, msg),
@@ -96,7 +123,7 @@ module dexEvolution {
     }
 
 
-    action placeLimitOrderAction: bool =
+    action placeLimitOrderAction: bool = all {
         nondet c = oneOf(CREATORS)
         nondet o_init = oneOf(ORDER_TYPES)
         nondet block_delta = oneOf(1.to(MAX_FUTURE_BLOCKS))
@@ -105,12 +132,11 @@ module dexEvolution {
         nondet t = oneOf(TICKS)
         nondet tokenIn = oneOf(TOKENS)
         nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn)) 
-        // @audit-info
-        // with this choice, we are not modelling user's funds. The assumption is that the user has as much as needed
-        // And can replenish the funds as needed.
-        // This implies that the only way to fill increase modeled coins is by withdrawing from the DEX.
-        // This is a simplification that we can revisit later.
-        nondet amount = oneOf(1.to(MAX_AMOUNT))
+        
+        val possibleAmounts = 0.to(state.coins.get(c).get(tokenIn)) 
+        
+
+        nondet amount = oneOf(possibleAmounts)
         // not implemented for now, so using a trivial value
         val maxAmountOut = amount + 1
         val limitOrderMsg = {
@@ -125,6 +151,7 @@ module dexEvolution {
         val res = placeLimitOrder(state, limitOrderMsg)
 
         all {
+            require(limitOrderMsg.amountIn > 0),
             state' = res.state,
             // @audit-info TODO: this check is until Postcondition is updated to support different types
             postconditionOK' = 
@@ -133,7 +160,8 @@ module dexEvolution {
             else true,
             actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
             actionSuccess' = res.error == "nil"
-        }   
+        }  
+    } 
 
 
     
@@ -266,6 +294,4 @@ action withdrawLimitOrderAction: bool =
                         if (deposit.swaps) withdrawnAmounts._1 > deposit.amounts._1 and withdrawnAmounts._2 > deposit.amounts._2
                         else withdrawnAmounts._1 == deposit.amounts._1 and withdrawnAmounts._2 == deposit.amounts._2
                       else true))
-
-
     }
