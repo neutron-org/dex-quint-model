@@ -91,7 +91,7 @@ module Dex {
                         | GoodTillTime(block_time) => block_time
                         | JustInTime => state.blockNumber + 1
                         | GoodTillCancelled => -1 
-                        | _ => -1 // unreachable
+                        | _ => -2 // unreachable
                     }
                     placeRemainingLimitOrderAmount(tradeUpdatedTranches, state.tranchesShares, msg, remainingAmount, expirationBlock)
 
@@ -241,8 +241,17 @@ module Dex {
     
 
     pure def advanceBlocks(state: State, numBlocks: int) : Result = {
-        // @audit-inf TODO: clearing of expired orders missing
-        val updatedState = {blockNumber: state.blockNumber + numBlocks, ...state}
+        val newBlock = state.blockNumber + numBlocks
+        val updatedTranches = state.tranches.keys().mapBy(
+            k =>
+                val tranche = state.tranches.get(k) 
+                if (tranche.expirationTime >= 0 and tranche.expirationTime < newBlock)
+                    {isActive: false, ...state.tranches.get(k)}
+                  else
+                    state.tranches.get(k)
+        )
+        
+        val updatedState = {blockNumber: newBlock, tranches: updatedTranches, ...state}
         ok(updatedState)
     }
 

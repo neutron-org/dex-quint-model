@@ -129,13 +129,15 @@ module utils {
     
     pure def calculateTrancheKey(makerToken: Token, takerToken: Token, tick: TickIndex, tranches: TrancheKey -> Tranche, expirationBlockTime: BlockTime): TrancheKey = 
     
-        val appropriateTrancheKeys = tranches.keys().filter(key => 
+        val appropriateTrancheKeys = tranches.keys().filter(key =>
+            val tranche = tranches.get(key) 
             and{
                 key.makerToken == makerToken, 
                 key.takerToken == takerToken,
                 key.tick == tick, 
-                tranches.get(key).isFresh,
-                tranches.get(key).expirationTime == expirationBlockTime
+                tranche.isFresh,
+                tranche.expirationTime == expirationBlockTime,
+                tranche.isActive
             }
         )            
         
@@ -188,7 +190,7 @@ module utils {
 
     pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey]): TrancheKey =
         trancheKeys.fold(
-            // trancheKeys.chooseSome() ideally, but that one is still unimplemented in the simulation
+            // @audit-issue trancheKeys.chooseSome() ideally, but that one is still unimplemented in the simulation
             {makerToken: "_", takerToken: "_", tick: MAX_TICK*10, id: 0},
             (acc, key) => 
                 if (trancheLTE(key, acc)) 
@@ -238,7 +240,14 @@ module utils {
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         // checked: it should be both.
         val relevantTranches = tranches.keys()
-            .filter(key => key.makerToken == tokenOut and key.takerToken == tokenIn and key.tick <= maxPriceTick)                
+            .filter(key => and{
+                key.makerToken == tokenOut,
+                key.takerToken == tokenIn,
+                key.tick <= maxPriceTick,
+                tranches.get(key).isActive,
+                tranches.get(key).reservesMaker > 0
+                })
+                        
         val relevantPools = pools.keys()
                 .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
             
@@ -411,6 +420,7 @@ pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId 
         else                    
             val newTranche = {
                 isFresh: true,
+                isActive: true,
                 reservesMaker: amount,
                 reservesTaker: 0,
                 totalMaker: amount,

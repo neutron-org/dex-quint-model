@@ -115,6 +115,7 @@ module types {
             // should only be true until a first exchange happens through the tranche
             // isFresh <=> reservesMaker == totalMaker
             isFresh: bool,
+            isActive: bool,
             reservesMaker: int,
             reservesTaker: int,
             totalMaker: int,
