@@ -123,7 +123,7 @@ module dexEvolution {
     }
 
 
-    action placeLimitOrderAction: bool = all {
+    action placeLimitOrderAction: bool = 
         nondet c = oneOf(CREATORS)
         nondet o_init = oneOf(ORDER_TYPES)
         nondet block_delta = oneOf(1.to(MAX_FUTURE_BLOCKS))
@@ -132,12 +132,12 @@ module dexEvolution {
         nondet t = oneOf(TICKS)
         nondet tokenIn = oneOf(TOKENS)
         nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn)) 
-        
-        val possibleAmounts = 0.to(state.coins.get(c).get(tokenIn)) 
-        
 
+        // @audit-info We allow here to select 0 (so as to avoid oneOf on an empty set), but 0 value is disallowed
+        // in the requirement below
+        val possibleAmounts = 0.to(state.coins.get(c).get(tokenIn)) 
         nondet amount = oneOf(possibleAmounts)
-        // not implemented for now, so using a trivial value
+        // @audit-info not implemented for now, so using a trivial value
         val maxAmountOut = amount + 1
         val limitOrderMsg = {
             creator: c,
@@ -160,8 +160,7 @@ module dexEvolution {
             else true,
             actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
             actionSuccess' = res.error == "nil"
-        }  
-    } 
+        }     
 
 
     
