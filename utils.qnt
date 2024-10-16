@@ -393,7 +393,8 @@ pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId 
         val trancheKey = calculateTrancheKey(makerToken, takerToken, tick, tranches, expirationBlockTime)                      
         val tranchesAndSharesUpdate = 
         if (tranches.keys().contains(trancheKey)) // if the key was one of the previously existing
-            val updatedTranches = tranches.setBy(trancheKey, old => {reservesMaker: old.reservesMaker + amount, ...old})
+            val updatedTranches = tranches.setBy(trancheKey, 
+                old => {reservesMaker: old.reservesMaker + amount, totalMaker: old.totalMaker + amount, ...old})
             val newShares = if (shares.get(creator).keys().contains(trancheKey))
                 {
                     sharesOwned: shares.get(creator).get(trancheKey).sharesOwned + amount, 
