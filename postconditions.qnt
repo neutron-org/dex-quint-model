@@ -42,45 +42,53 @@ module postconditions {
 
 
     pure def depositPostcondition(before: State, after: State, msg: DepositMsg): bool = 
-      // We could guarantee by design that the token pair is submitted in order
-      val pair =  orderTokenPair(msg.tokenPair)
-      val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-      val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
-      val poolId = getPoolId(pair, tick, msg.fee)
-      // ** State changes validation **
-      // Pool exists
-      after.pools.has(poolId) and 
-      val reservesBefore = if (before.pools.has(poolId)) (0,0) else before.pools.get(poolId).reserves
-      val reservesAfter = after.pools.get(poolId).reserves
-      val sharesBefore = if (before.pools.has(poolId)) 0 else before.pools.get(poolId).shares
-      val sharesAfter = after.pools.get(poolId).shares
-      // Deposit and shares computation considering the optional autoswap
-      val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
-      val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
-      val inAmounts = if (msg.autoswap) amounts
-                      else inAmountsBeforeAutoswap
-      val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick) else zero
-      val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick, autoswapFee)
-      // Reserves are updated
-      reservesAfter._1 == reservesBefore._1 + inAmounts._1 and 
-      reservesAfter._2 == reservesBefore._2 + inAmounts._2 and
-      // Coins are transferred
-      after.coins.get(msg.creator).get(pair._1) >= 0 and after.coins.get(msg.creator).get(pair._2) >= 0 and
-      after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) - inAmounts._1 and
-      after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) - inAmounts._2 and
-      // Shares are minted
-      after.poolShares.get(msg.creator).has(poolId) and
-      after.poolShares.get(msg.creator).get(poolId) == 
-      (if (before.poolShares.get(msg.creator).has(poolId)) 
-            before.poolShares.get(msg.creator).get(poolId) + outShares
-        else 
-            outShares) 
-      and
-      sharesAfter == sharesBefore + outShares and
-      // Pool value increases
-      val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick) else 0
-      val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick)
-      poolValueAfter > poolValueBefore
+        // We could guarantee by design that the token pair is submitted in order
+        val pair =  orderTokenPair(msg.tokenPair)
+        val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
+        val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
+        val poolId = getPoolId(pair, tick, msg.fee)
+        // ** State changes validation **
+        // Pool exists
+        after.pools.has(poolId) and 
+        val reservesBefore = if (before.pools.has(poolId)) (0,0) else before.pools.get(poolId).reserves
+        val reservesAfter = after.pools.get(poolId).reserves
+        val sharesBefore = if (before.pools.has(poolId)) 0 else before.pools.get(poolId).shares
+        val sharesAfter = after.pools.get(poolId).shares
+        // Deposit and shares computation considering the optional autoswap
+        val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
+        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+        val inAmounts = if (msg.autoswap) amounts
+                        else inAmountsBeforeAutoswap
+        val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick) else zero
+        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick, autoswapFee)
+        and{
+            // Reserves are updated
+            reservesAfter._1 == reservesBefore._1 + inAmounts._1,
+            reservesAfter._2 == reservesBefore._2 + inAmounts._2,
+            // Coins are transferred
+            after.coins.get(msg.creator).get(pair._1) >= 0 and after.coins.get(msg.creator).get(pair._2) >= 0,
+            after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) - inAmounts._1,
+            after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) - inAmounts._2,
+            // Shares are minted
+            after.poolShares.get(msg.creator).has(poolId),
+            after.poolShares.get(msg.creator).get(poolId) == 
+            (if (before.poolShares.get(msg.creator).has(poolId)) 
+                before.poolShares.get(msg.creator).get(poolId) + outShares
+            else 
+                outShares),        
+            sharesAfter == sharesBefore + outShares,
+            // Pool value increases
+            val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick) else 0
+            val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick)
+            poolValueAfter > poolValueBefore 
+        }
+        
+        
+        
+        
+        
+            
+
 
 
 
