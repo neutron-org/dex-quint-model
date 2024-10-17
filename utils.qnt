@@ -60,7 +60,7 @@ module utils {
             poolShares: Map(),
             pools: Map(),
             deposits: Map(),
-            poolWithdrawns: Map()
+            poolWithdraws: Map()
         }
 
     // ----
@@ -453,10 +453,11 @@ module utils {
     // DEPOSIT RELATED FUNCTIONS
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
       val inAmount0 = if (reserves._2 > 0)
-                        min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())
+                        // min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())
+                        min(amounts._1, fromRatio(reserves._1, reserves._2).mulInt(amounts._2).truncate())
                       else amounts._1
       val inAmount1 = if (reserves._1 > 0)
-                        min(amounts._2, amounts._1.fromInt().mul(reserves._2.fromInt()).div(reserves._1.fromInt()).truncate())
+                        min(amounts._2, fromRatio(reserves._2, reserves._1).mulInt(amounts._1).truncate())
                       else amounts._2
       (inAmount0, inAmount1)
     }
