@@ -61,6 +61,7 @@ module postconditions {
                         else inAmountsBeforeAutoswap
         val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick) else zero
         val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick, autoswapFee)
+        
         and{
             // Reserves are updated
             reservesAfter._1 == reservesBefore._1 + inAmounts._1,
@@ -80,7 +81,17 @@ module postconditions {
             // Pool value increases
             val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick) else 0
             val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick)
-            poolValueAfter > poolValueBefore 
+            poolValueAfter > poolValueBefore,
+            // Pool ratio is maintained
+            if (before.pools.has(poolId))
+                val reservesBefore = before.pools.get(poolId).reserves
+                val reservesAfter = after.pools.get(poolId).reserves
+                if (reservesBefore._2 > 0) 
+                    val ratioBefore = fromRatio(reservesBefore._1, reservesBefore._2)
+                    val ratioAfter = fromRatio(reservesAfter._1, reservesAfter._2)
+                    equal(ratioAfter, ratioBefore)
+                else reservesAfter._2 == 0
+            else true
         }
         
         
