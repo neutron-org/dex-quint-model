@@ -180,7 +180,7 @@ module types {
 
         // helper state variables, to be used in invariants
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
-        poolWithdrawns: Addr -> PoolId -> (int, int)
+        poolWithdraws: Addr -> PoolId -> (int, int)
     }
 
     type Result = {state: State, error: str}

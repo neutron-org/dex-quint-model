@@ -13,17 +13,17 @@ module Dex {
 
 
     pure def withdrawPool(state: State, msg: WithdrawPoolMsg) : Result = {
-      // deposits and poolWithdrawns variable management
+      // deposits and poolWithdraws variable management
       val pair =  orderTokenPair(msg.tokenPair)
       val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
       val poolId = getPoolId(pair, tick, msg.fee)
       // pool must exist
       val pool = state.pools.get(poolId)
       val outAmounts = computeAmountsWithdrawPool(pool.reserves, pool.shares, msg.amount)
-      // poolWithdrawns variable management
-      val withdrawns = state.poolWithdrawns.get(msg.creator).get(poolId)
+      // poolWithdraws variable management
+      val withdrawns = state.poolWithdraws.get(msg.creator).get(poolId)
       val updatedWithdraws = (withdrawns._1 + outAmounts._1, withdrawns._2 + outAmounts._2)
-      ok({poolWithdrawns: state.poolWithdrawns.set(msg.creator, state.poolWithdrawns.get(msg.creator).set(poolId, updatedWithdraws)),
+      ok({poolWithdraws: state.poolWithdraws.set(msg.creator, state.poolWithdraws.get(msg.creator).set(poolId, updatedWithdraws)),
           ...state})                  
       //ok(state)
     }
@@ -32,25 +32,25 @@ module Dex {
     
   
     pure def deposit(state: State, msg: DepositMsg) : Result = {
-      val pair =  orderTokenPair(msg.tokenPair)
-      val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-      val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
-      val poolId = getPoolId(pair, tick, msg.fee)
-      val pool = if (state.pools.has(poolId)) state.pools.get(poolId)
-                 else {reserves: (0, 0), shares: 0}
-      val inAmounts = computeAmountsDeposit(pool.reserves, amounts)
-      // deposits and poolWithdrawns variable management
-      val isNewPeriod = if (state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0) false 
+        val pair =  orderTokenPair(msg.tokenPair)
+        val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
+        val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
+        val poolId = getPoolId(pair, tick, msg.fee)
+        val pool = if (state.pools.has(poolId)) state.pools.get(poolId)
+                    else {reserves: (0, 0), shares: 0}
+        val inAmounts = computeAmountsDeposit(pool.reserves, amounts)
+        // deposits and poolWithdraws variable management
+        val isNewPeriod = if (state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0) false 
                         else true
-      val deposit = if (not(isNewPeriod)) state.deposits.get(msg.creator).get(poolId)
+        val deposit = if (not(isNewPeriod)) state.deposits.get(msg.creator).get(poolId)
                     else {amounts: (0,0), swaps: false}
-      val withdrawns = if (not(isNewPeriod)) state.poolWithdrawns.get(msg.creator).get(poolId)
-                       else (0,0)
-      val updatedDeposit = {amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
+        val withdraws = if (not(isNewPeriod)) state.poolWithdraws.get(msg.creator).get(poolId)
+                        else (0,0)
+        val updatedDeposit = {amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
                             swaps: if (isNewPeriod) false else deposit.swaps}
-      ok({deposits: state.deposits.set(msg.creator, state.deposits.get(msg.creator).mapSafeSet(poolId, updatedDeposit)),
-          poolWithdrawns: state.poolWithdrawns.set(msg.creator, state.poolWithdrawns.get(msg.creator).mapSafeSet(poolId, withdrawns)),
-          ...state})                  
+        ok({deposits: state.deposits.set(msg.creator, state.deposits.get(msg.creator).mapSafeSet(poolId, updatedDeposit)),
+            poolWithdraws: state.poolWithdraws.set(msg.creator, state.poolWithdraws.get(msg.creator).mapSafeSet(poolId, withdraws)),
+            ...state})                  
     }
 
 

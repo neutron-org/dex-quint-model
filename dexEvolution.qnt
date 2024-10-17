@@ -82,7 +82,7 @@ module dexEvolution {
         nondet doAutoswap = oneOf(Set(true, false))
         // a set of {creator: Addr, poolKey: PoolKey} records containing all the pools whose tokens are 
         // the ones in which the creator has >0 coins. We do so by iterating first over creators, and then
-        // over pools, and checking if the creator has >0 coins in at least of of the tokens of the pool.
+        // over pools, and checking if the creator has >0 coins in at least one of pool tokens.
         val creatorsAndPools = CREATORS.fold(
             Set(),  
             (acc, c) => acc.union(
@@ -289,7 +289,7 @@ action withdrawLimitOrderAction: bool =
         creator => state.deposits.get(creator).keys().forall(
             poolId => if (state.poolShares.get(creator).get(poolId) == 0)
                         val deposit = state.deposits.get(creator).get(poolId)
-                        val withdrawnAmounts = state.poolWithdrawns.get(creator).get(poolId)
+                        val withdrawnAmounts = state.poolWithdraws.get(creator).get(poolId)
                         if (deposit.swaps) withdrawnAmounts._1 > deposit.amounts._1 and withdrawnAmounts._2 > deposit.amounts._2
                         else withdrawnAmounts._1 == deposit.amounts._1 and withdrawnAmounts._2 == deposit.amounts._2
                       else true))
