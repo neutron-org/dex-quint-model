@@ -319,8 +319,11 @@ module utils {
         
         {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
         
-        
-pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
+
+    pure def mayExpire(tranche: Tranche): bool = 
+        tranche.expirationTime >= 0
+
+    pure def validatePoolsUpdates(before: State, after: State, poolsUpdates: PoolId -> PoolUpdateDiff) : bool = 
         
         // updated pools equal the 'after' state, the rest is unchanged
         before.pools.keys().forall(poolId => 

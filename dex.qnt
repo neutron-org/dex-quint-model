@@ -245,7 +245,7 @@ module Dex {
         val updatedTranches = state.tranches.keys().mapBy(
             k =>
                 val tranche = state.tranches.get(k) 
-                if (tranche.expirationTime >= 0 and tranche.expirationTime < newBlock)
+                if (tranche.mayExpire() and tranche.expirationTime < newBlock)
                     {isActive: false, ...state.tranches.get(k)}
                   else
                     state.tranches.get(k)
