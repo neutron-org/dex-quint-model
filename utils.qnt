@@ -49,10 +49,12 @@ module utils {
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
 
-    pure def initState : State = 
+    pure def initState(initCoins: Coins) : State = 
+        
+        
         {
             tranches: Map(),
-            coins: CREATORS.mapBy(creator => TOKENS.mapBy(t => 0)),
+            coins: initCoins,
             tranchesShares: CREATORS.mapBy(creator => Map()),
             blockNumber: 0,
             poolShares: Map(),

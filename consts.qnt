@@ -5,6 +5,8 @@ module consts {
 
     //  Helper vals
     pure val CREATORS: Set[Addr] = Set("Alice", "Bob", "Carol")
+    pure val INITIAL_CREATORS_BALANCES: Set[int] = Set(1000, 500)
+    pure val INITIAL_CREATOR_BALANCE_TEMP: int = 1000
     // pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled, ImmediateOrCancel, FillOrKill, JustInTime, GoodTillTime(-1))
     pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled)
     pure val PRICES: Set[int] = Set(10000000, 11500000, 9500000)
