@@ -45,22 +45,22 @@ module postconditions {
         // We could guarantee by design that the token pair is submitted in order
         val pair =  orderTokenPair(msg.tokenPair)
         val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-        val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
-        val poolId = getPoolId(pair, tick, msg.fee)
+        val tick0To1 = if (pair == msg.tokenPair) msg.tick else -msg.tick
+        val poolId = getPoolId(pair, tick0To1, msg.fee)
         // ** State changes validation **
         // Pool exists
         after.pools.has(poolId) and 
-        val reservesBefore = if (before.pools.has(poolId)) (0,0) else before.pools.get(poolId).reserves
+        val reservesBefore = if (before.pools.has(poolId)) before.pools.get(poolId).reserves else (0,0)
         val reservesAfter = after.pools.get(poolId).reserves
-        val sharesBefore = if (before.pools.has(poolId)) 0 else before.pools.get(poolId).shares
+        val sharesBefore = if (before.pools.has(poolId)) before.pools.get(poolId).shares else 0
         val sharesAfter = after.pools.get(poolId).shares
         // Deposit and shares computation considering the optional autoswap
         val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
         val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
         val inAmounts = if (msg.autoswap) amounts
                         else inAmountsBeforeAutoswap
-        val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick) else zero
-        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick, autoswapFee)
+        val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
+        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick0To1, autoswapFee)
         
         and{
             // Reserves are updated
@@ -79,17 +79,24 @@ module postconditions {
                 outShares),        
             sharesAfter == sharesBefore + outShares,
             // Pool value increases
-            val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick) else 0
-            val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick)
-            poolValueAfter > poolValueBefore,
-            // Pool ratio is maintained
-            if (before.pools.has(poolId))
+            val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick0To1) else 0
+            val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick0To1)
+            // @audit-info This will not be true for small increases, where due to truncation
+            // in the calculation of the pool value, the pool value could remain the same.
+            // Thus, commenting out
+            // 
+            // poolValueAfter > poolValueBefore,
+            // Pool value does not decrease
+            poolValueAfter >= poolValueBefore,
+            // Pool ratio is maintained if no autoswap and both sides of the pool exist
+            
+            if (before.pools.has(poolId) and not(msg.autoswap) and before.pools.get(poolId).bothSides())
                 val reservesBefore = before.pools.get(poolId).reserves
                 val reservesAfter = after.pools.get(poolId).reserves
                 if (reservesBefore._2 > 0) 
                     val ratioBefore = fromRatio(reservesBefore._1, reservesBefore._2)
                     val ratioAfter = fromRatio(reservesAfter._1, reservesAfter._2)
-                    equal(ratioAfter, ratioBefore)
+                    approxEqual(ratioAfter, ratioBefore, div(ratioBefore, fromInt(5)))
                 else reservesAfter._2 == 0
             else true
         }

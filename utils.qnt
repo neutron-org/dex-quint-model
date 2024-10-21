@@ -57,10 +57,10 @@ module utils {
             coins: initCoins,
             tranchesShares: CREATORS.mapBy(creator => Map()),
             blockNumber: 0,
-            poolShares: Map(),
+            poolShares: CREATORS.mapBy(creator => Map()),
             pools: Map(),
-            deposits: Map(),
-            poolWithdraws: Map()
+            deposits: CREATORS.mapBy(creator => Map()),
+            poolWithdraws: CREATORS.mapBy(creator => Map())
         }
 
     // ----
@@ -73,11 +73,12 @@ module utils {
         }
 
     
-    pure def computePoolValue(reserves: (int, int), tick: int): int = 
-        val price1to0 = priceFromTick(-tick)
+    pure def computePoolValue(reserves: (int, int), tick0To1: int): int = 
+        val tick1To0 = -tick0To1
+        val price1to0 = priceFromTick(tick1To0)
         reserves._1 + reserves._2.fromInt().mul(price1to0).truncate()
 
-    pure def computeDepositValue(amounts: (int, int), tick: int): int = computePoolValue(amounts, tick)
+    pure def computeDepositValue(amounts: (int, int), tick0To1: int): int = computePoolValue(amounts, tick0To1)
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int) : bool =
         // @audit-info What is the best practice to encode assumptions on pure functions,
@@ -451,9 +452,12 @@ module utils {
 
 
     // DEPOSIT RELATED FUNCTIONS
+
+    val emptyPool = {reserves: (0, 0), shares: 0}
+
+    // Calculates the amounts that may be deposited so that the pool ratios get preserved
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
       val inAmount0 = if (reserves._2 > 0)
-                        // min(amounts._1, amounts._2.fromInt().mul(reserves._1.fromInt()).div(reserves._2.fromInt()).truncate())
                         min(amounts._1, fromRatio(reserves._1, reserves._2).mulInt(amounts._2).truncate())
                       else amounts._1
       val inAmount1 = if (reserves._1 > 0)
@@ -462,10 +466,18 @@ module utils {
       (inAmount0, inAmount1)
     }
 
+    pure def reservesRatio(p: Pool): Dec = 
+        // assumes that reserves._2 is positive
+        fromRatio(p.reserves._1, p.reserves._2)
+
     // LP.2 in specification invariants
     // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
-    pure def computeAutoswapFee(residualAmounts: (int, int), tick: TickIndex): Dec =
-        computeDepositValue(residualAmounts, tick).fromInt().mul(one.sub(priceFromTick(tick)))
+    pure def computeAutoswapFee(residualAmounts: (int, int), tick0To1: TickIndex, fee: TickIndex): Dec =
+        mulInt(
+            one.sub(priceFromTick(fee)),
+            computeDepositValue(residualAmounts, tick0To1)
+            )
+        
 
     // @audit-info not sure if to compute depositValue when autoswapping I should use the full amount in the
     // deposit message or just the one computed by computeAmountsDeposit
@@ -477,9 +489,13 @@ module utils {
     // sharesMinted = (depositValue - autoswapFee) * shareValue
     pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int, autoswapFee: Dec): int =
       val poolValue = computePoolValue(reserves, tick)
-      val shareValue = existingShares.fromInt().div(poolValue.fromInt().add(autoswapFee)).truncate()
-      val depositValue = computeDepositValue(amounts, tick)
-      depositValue.fromInt().sub(autoswapFee).mul(shareValue.fromInt()).truncate()
+      val depositValue: int = computeDepositValue(amounts, tick)      
+    //   @audit-info What is the share value when the pool value is 0? (At the very beginning)
+      val shareValue = 
+        if (poolValue == 0) one
+        else intDivDec(existingShares, poolValue.fromInt().add(autoswapFee))
+      
+      sub(depositValue.fromInt(), autoswapFee).mul(shareValue).truncate()
 
     // This specifies the implementation
     // fee = (upperTickIndex - lowerTickIndex) / 2
@@ -548,6 +564,9 @@ module utils {
       val proRataShare = shares.fromInt().div(totalShares.fromInt()).truncate()
       (proRataShare * reserves._1, proRataShare * reserves._2)
 
+    pure def bothSides(p: Pool): bool = 
+        p.reserves._1 > 0 and p.reserves._2 > 0
+
     pure def getPoolId(tokens: (Token, Token), tick: TickIndex, fee: Fee): PoolId = 
       {tokenPair: tokens, tick: tick, fee: fee}
 
@@ -599,10 +618,13 @@ module utils {
  
 
     pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int) :
-      PoolId -> {amounts: (int, int), swaps: bool} = 
-        poolIds.fold(userDeposits, (acc, id) => if (userDeposits.has(id) and userShares.get(id) > 0)
-                                                    acc.set(id, {swaps: true, ...userDeposits.get(id)})
-                                                else acc)
+    PoolId -> {amounts: (int, int), swaps: bool} = 
+        
+        poolIds.fold(userDeposits, (acc, id) => 
+            if (userDeposits.has(id) and userShares.get(id) > 0)
+                acc.set(id, {swaps: true, ...userDeposits.get(id)})
+            else acc
+            )
 
 
     // CANCEL RELATED FUNCTIONS

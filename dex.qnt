@@ -34,23 +34,59 @@ module Dex {
     pure def deposit(state: State, msg: DepositMsg) : Result = {
         val pair =  orderTokenPair(msg.tokenPair)
         val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-        val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
-        val poolId = getPoolId(pair, tick, msg.fee)
-        val pool = if (state.pools.has(poolId)) state.pools.get(poolId)
-                    else {reserves: (0, 0), shares: 0}
-        val inAmounts = computeAmountsDeposit(pool.reserves, amounts)
+        val tick0To1 = if (pair == msg.tokenPair) msg.tick else -msg.tick
+        val poolId = getPoolId(pair, tick0To1, msg.fee)
+        val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
+        val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
+        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+        val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
+        val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
+        val autoswapFee = if (performAutoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
+        val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, tick0To1, autoswapFee)
+
+        // updating the pool shares
+        val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
+        val updatedShares = state.poolShares.put(
+            msg.creator,
+            state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
+        )
+
+        // updating the pools        
+        val updatedPools = state.pools.put(
+            poolId,
+            {
+                reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
+                shares: pool.shares + outShares
+            }
+
+        )
+
         // deposits and poolWithdraws variable management
-        val isNewPeriod = if (state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0) false 
-                        else true
-        val deposit = if (not(isNewPeriod)) state.deposits.get(msg.creator).get(poolId)
-                    else {amounts: (0,0), swaps: false}
-        val withdraws = if (not(isNewPeriod)) state.poolWithdraws.get(msg.creator).get(poolId)
-                        else (0,0)
-        val updatedDeposit = {amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
-                            swaps: if (isNewPeriod) false else deposit.swaps}
-        ok({deposits: state.deposits.set(msg.creator, state.deposits.get(msg.creator).mapSafeSet(poolId, updatedDeposit)),
-            poolWithdraws: state.poolWithdraws.set(msg.creator, state.poolWithdraws.get(msg.creator).mapSafeSet(poolId, withdraws)),
-            ...state})                  
+        val preExistingDeposit = 
+            state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0                        
+        val deposit = if (preExistingDeposit) state.deposits.get(msg.creator).get(poolId)
+                      else {amounts: (0,0), swaps: false}
+        
+        val updatedDeposit = {
+            amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
+            swaps: if (preExistingDeposit) deposit.swaps else false
+            }
+        
+        val updatedCreatorCoins = state.coins.get(msg.creator).setBy(
+            pair._1, old => old - inAmounts._1
+        ).setBy(
+            pair._2, old => old - inAmounts._2
+        )
+
+        val updatedState = {
+            deposits: state.deposits.setBy(msg.creator, old => old.put(poolId, updatedDeposit)),            
+            poolShares: updatedShares,
+            pools: updatedPools,
+            coins: state.coins.set(msg.creator, updatedCreatorCoins),
+            ...state
+            }
+            
+        ok(updatedState)                  
     }
 
 

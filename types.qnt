@@ -51,7 +51,7 @@ module types {
             tokenPair: (Token, Token),
             amountPair: (int, int),
             tick: TickIndex,
-            fee: Fee,
+            fee: TickIndex,
             autoswap: bool
         }
 

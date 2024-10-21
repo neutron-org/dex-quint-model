@@ -53,6 +53,17 @@ module dec {
     
     pure def equal(a: Dec, b: Dec): bool =
         a._1 * b._2 == a._2 * b._1
+    
+    pure def _abs(a: Dec): Dec =
+        if (gt(zero, a)) (-a._1, a._2)
+        else a
+
+    pure def approxEqual(a: Dec, b: Dec, epsilon: Dec): bool =
+    // assumes epsilon > 0
+        gt(
+            epsilon,
+            _abs(a.sub(b))
+        )
 
     pure def truncate(a: Dec): int =
         a._1 / a._2
