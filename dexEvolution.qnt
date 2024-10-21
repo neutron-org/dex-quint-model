@@ -293,4 +293,9 @@ action withdrawLimitOrderAction: bool =
                         if (deposit.swaps) withdrawnAmounts._1 > deposit.amounts._1 and withdrawnAmounts._2 > deposit.amounts._2
                         else withdrawnAmounts._1 == deposit.amounts._1 and withdrawnAmounts._2 == deposit.amounts._2
                       else true))
+
+
+    // Invariant: Tranche expiration times always >= -1 (sanity check)
+    val expirationTimeSanity = 
+        state.tranches.keys().forall(k => state.tranches.get(k).expirationTime >= -1)
     }
