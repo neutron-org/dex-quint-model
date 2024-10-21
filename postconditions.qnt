@@ -88,17 +88,18 @@ module postconditions {
             // poolValueAfter > poolValueBefore,
             // Pool value does not decrease
             poolValueAfter >= poolValueBefore,
-            // Pool ratio is maintained if no autoswap and both sides of the pool exist
             
-            if (before.pools.has(poolId) and not(msg.autoswap) and before.pools.get(poolId).bothSides())
-                val reservesBefore = before.pools.get(poolId).reserves
-                val reservesAfter = after.pools.get(poolId).reserves
-                if (reservesBefore._2 > 0) 
-                    val ratioBefore = fromRatio(reservesBefore._1, reservesBefore._2)
-                    val ratioAfter = fromRatio(reservesAfter._1, reservesAfter._2)
-                    approxEqual(ratioAfter, ratioBefore, div(ratioBefore, fromInt(5)))
-                else reservesAfter._2 == 0
-            else true
+            // Pool ratio is maintained if no autoswap and both sides of the pool exist
+            // @audit-issue DOES NOT HOLD
+            // if (before.pools.has(poolId) and not(msg.autoswap) and before.pools.get(poolId).bothSides())
+            //     val reservesBefore = before.pools.get(poolId).reserves
+            //     val reservesAfter = after.pools.get(poolId).reserves
+            //     if (reservesBefore._2 > 0) 
+            //         val ratioBefore = fromRatio(reservesBefore._1, reservesBefore._2)
+            //         val ratioAfter = fromRatio(reservesAfter._1, reservesAfter._2)
+            //         approxEqual(ratioAfter, ratioBefore, div(ratioBefore, fromInt(5)))
+            //     else reservesAfter._2 == 0
+            // else true
         }
         
         

@@ -12,9 +12,71 @@ module runs {
     action unchangedState = all {
         state' = state,
         postconditionOK' = postconditionOK,
-        actionTaken' = actionTaken
+        actionTaken' = actionTaken,
+        actionSuccess' = actionSuccess
 
     }
+
+    // Makes the update to the state, and all other updates are "dummy" updates
+    action onlyStateUpdate(res: Result): bool =         
+        val updatedState = res.state                        
+        all{
+            state' = updatedState,
+            postconditionOK' = false,
+            actionSuccess' = res.error == "nil",
+            actionTaken' = {name: "DeposixxtPool", message: Init},
+        }
+        
+
+    val testPoolKey: PoolId = {fee: -2, tick: 2, tokenPair: ("A", "B")}
+    val testCreator = "Alice"
+    pure def depositMsgPool(poolKey: PoolId, amountPair: (int, int), doAutoswap: bool): DepositMsg = {
+        creator: testCreator,
+        tokenPair: poolKey.tokenPair,
+        amountPair: amountPair,
+        tick: poolKey.tick,
+        fee: poolKey.fee,
+        autoswap: doAutoswap
+    }
+    
+    // The runs showcases how a reserves ratio changed from
+    // 1/73 = 0.0136 to 4/724 = 0.0055
+    // In the inverse, this is going from 73 to 181
+    run autoswapIssue = 
+        init 
+        .then(
+            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (1, 73), false)
+            val res = deposit(state, depositMsg)
+            val updatedPool = res.state.pools.get(testPoolKey)
+            all{
+                onlyStateUpdate(res),
+                assert(updatedPool.reservesRatio() == (1, 73))
+            }
+        )
+        .then(
+            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (21, 145), false)
+            val res = deposit(state, depositMsg)
+            val updatedPool = res.state.pools.get(testPoolKey)
+            all{
+                onlyStateUpdate(res),
+                assert(updatedPool.reservesRatio() == (2, 218))
+            })
+        .then(
+            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (21, 217), false)
+            val res = deposit(state, depositMsg)
+            val updatedPool = res.state.pools.get(testPoolKey)
+            all{
+                onlyStateUpdate(res),
+                assert(updatedPool.reservesRatio() == (3, 435))
+            })
+        .then(
+            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (21, 289), false)
+            val res = deposit(state, depositMsg)
+            val updatedPool = res.state.pools.get(testPoolKey)
+            all{
+                onlyStateUpdate(res),
+                assert(updatedPool.reservesRatio() == (4, 724))
+            })
 
     run limitOrderTrade = 
         init
@@ -96,6 +158,5 @@ module runs {
                     assert(newTranche.makerDenomination == "B")
                 }                
             }
-        )
-    
+        )    
     }
