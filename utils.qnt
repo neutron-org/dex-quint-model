@@ -488,14 +488,13 @@ module utils {
     // shareValue = totalPreexistingShares / (totalPoolValue + autswapFee)
     // sharesMinted = (depositValue - autoswapFee) * shareValue
     pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int, autoswapFee: Dec): int =
-      val poolValue = computePoolValue(reserves, tick)
-      val depositValue: int = computeDepositValue(amounts, tick)      
-    //   @audit-info What is the share value when the pool value is 0? (At the very beginning)
-      val shareValue = 
-        if (poolValue == 0) one
-        else intDivDec(existingShares, poolValue.fromInt().add(autoswapFee))
-      
-      sub(depositValue.fromInt(), autoswapFee).mul(shareValue).truncate()
+        
+        val poolValue = computePoolValue(reserves, tick)
+        val depositValue: int = computeDepositValue(amounts, tick)      
+        if (poolValue == 0) depositValue
+        else 
+            val shareValue = intDivDec(existingShares, poolValue.fromInt().add(autoswapFee))
+            sub(depositValue.fromInt(), autoswapFee).mul(shareValue).truncate()
 
     // This specifies the implementation
     // fee = (upperTickIndex - lowerTickIndex) / 2
