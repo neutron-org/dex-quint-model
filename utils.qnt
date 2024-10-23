@@ -608,11 +608,11 @@ module utils {
                 acc 
     )
 
-    pure def computeReserveTick(poolTick: TickIndex, token0to1: bool, fee: Fee): TickIndex = 
-        if (token0to1) 
-            poolTick + fee 
+    pure def computeReserveTick(poolTick: TickIndex, isToken0Liquidity: bool, fee: Fee): TickIndex = 
+        if (isToken0Liquidity) 
+            -poolTick + fee 
         else 
-            -poolTick + fee
+            poolTick + fee
 
  
 
