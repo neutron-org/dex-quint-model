@@ -28,65 +28,112 @@ module Dex {
       //ok(state)
     }
 
+    pure def isTokenBehindEnemyLines(state: State, isPlacingToken0: bool, pair: TokenPair, tick: TickIndex, fee: TickIndex) : bool = 
+        // the tick at which I want to place token0        
+        val tickWithFee0 = computeReserveTick(tick, isPlacingToken0, fee)
+        // the tick below which there should be no token1 liquidity
+        val borderTick = -tickWithFee0
+        // if there is a pool with liquidity for the counterparty token (which is token1 since sortedness is assumed)
+        // which is crossed by borderTick
+        val poolLiquidityBehindEnemyLine = state.pools.keys()
+                .exists(
+                    id => id.tokenPair == pair and
+                    // there is some reserve of token1 in the pool
+                    state.pools.get(id).reserves._2 > 0 and 
+                    // the tick at which the liquidity for the counterparty token is placed
+                    val existingTickWithFee1 = computeReserveTick(id.tick, not(isPlacingToken0), id.fee)                 
+                    borderTick > existingTickWithFee1
+                )
+        val tokenToPlace = if (isPlacingToken0) pair._1 else pair._2
+        val counterPartyToken = if (isPlacingToken0) pair._2 else pair._1
 
+        // if there is a tranche with liquidity for the counterparty token which is crossed by borderTick
+        val trancheLiquidityBehindEnemyLine = state.tranches.keys()
+            .exists(key => and{
+                key.makerToken == counterPartyToken,
+                key.takerToken == tokenToPlace,                
+                state.tranches.get(key).isActive,
+                state.tranches.get(key).reservesMaker > 0,
+                borderTick > state.tranches.get(key).tick
+                })
+
+        poolLiquidityBehindEnemyLine or trancheLiquidityBehindEnemyLine
+
+        
+
+    // assume that `pair` is sorted
+    pure def isPoolBehindEnemyLines(state: State, pair: TokenPair, tick: TickIndex, fee: TickIndex) : bool = 
+        isTokenBehindEnemyLines(state, true, pair, tick, fee) 
+        or 
+        isTokenBehindEnemyLines(state, false, pair, tick, fee)
+            
+        
     
   
     pure def deposit(state: State, msg: DepositMsg) : Result = {
+        // first, sorting
         val pair =  orderTokenPair(msg.tokenPair)
         val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
         val tick0To1 = if (pair == msg.tokenPair) msg.tick else -msg.tick
-        val poolId = getPoolId(pair, tick0To1, msg.fee)
-        val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
-        val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
-        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
-        val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
-        val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
-        val autoswapFee = if (performAutoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
-        val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, tick0To1, autoswapFee)
-
-        // updating the pool shares
-        val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
-        val updatedShares = state.poolShares.put(
-            msg.creator,
-            state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
-        )
-
-        // updating the pools        
-        val updatedPools = state.pools.put(
-            poolId,
-            {
-                reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
-                shares: pool.shares + outShares
-            }
-
-        )
-
-        // deposits and poolWithdraws variable management
-        val preExistingDeposit = 
-            state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0                        
-        val deposit = if (preExistingDeposit) state.deposits.get(msg.creator).get(poolId)
-                      else {amounts: (0,0), swaps: false}
         
-        val updatedDeposit = {
-            amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
-            swaps: if (preExistingDeposit) deposit.swaps else false
-            }
-        
-        val updatedCreatorCoins = state.coins.get(msg.creator).setBy(
-            pair._1, old => old - inAmounts._1
-        ).setBy(
-            pair._2, old => old - inAmounts._2
-        )
 
-        val updatedState = {
-            deposits: state.deposits.setBy(msg.creator, old => old.put(poolId, updatedDeposit)),            
-            poolShares: updatedShares,
-            pools: updatedPools,
-            coins: state.coins.set(msg.creator, updatedCreatorCoins),
-            ...state
-            }
+        // @audit-info Consider not checking this, but disallowing any executions that do not satisfy the property
+        if (isPoolBehindEnemyLines(state, pair, tick0To1, msg.fee))
+            {state: state, error: "Pool behind enemy lines"}
+        else
+
+            val poolId = getPoolId(pair, tick0To1, msg.fee)
+            val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
+            val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
+            val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+            val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
+            val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
+            val autoswapFee = if (performAutoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
+            val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, tick0To1, autoswapFee)
+
+            // updating the pool shares
+            val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
+            val updatedShares = state.poolShares.put(
+                msg.creator,
+                state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
+            )
+
+            // updating the pools        
+            val updatedPools = state.pools.put(
+                poolId,
+                {
+                    reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
+                    shares: pool.shares + outShares
+                }
+
+            )
+
+            // deposits and poolWithdraws variable management
+            val preExistingDeposit = 
+                state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0                        
+            val deposit = if (preExistingDeposit) state.deposits.get(msg.creator).get(poolId)
+                        else {amounts: (0,0), swaps: false}
             
-        ok(updatedState)                  
+            val updatedDeposit = {
+                amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
+                swaps: if (preExistingDeposit) deposit.swaps else false
+                }
+            
+            val updatedCreatorCoins = state.coins.get(msg.creator).setBy(
+                pair._1, old => old - inAmounts._1
+            ).setBy(
+                pair._2, old => old - inAmounts._2
+            )
+
+            val updatedState = {
+                deposits: state.deposits.setBy(msg.creator, old => old.put(poolId, updatedDeposit)),            
+                poolShares: updatedShares,
+                pools: updatedPools,
+                coins: state.coins.set(msg.creator, updatedCreatorCoins),
+                ...state
+                }
+                
+            ok(updatedState)                  
     }
 
 

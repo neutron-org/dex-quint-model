@@ -24,7 +24,7 @@ module runs {
             state' = updatedState,
             postconditionOK' = false,
             actionSuccess' = res.error == "nil",
-            actionTaken' = {name: "DeposixxtPool", message: Init},
+            actionTaken' = {name: "placeholder", message: Init},
         }
         
 
@@ -38,6 +38,79 @@ module runs {
         fee: poolKey.fee,
         autoswap: doAutoswap
     }
+
+    run behindTrancheEnemyLines = 
+        init
+        .then(
+            val order: PlaceLimitOrderMsg = {
+                creator: "Alice",
+                orderType: GoodTillCancelled,
+                tokenIn: "A",
+                tokenOut: "B",
+                amountIn: 10,
+                tick: 100,
+                maxAmountOut: -1
+            }
+            val res = placeLimitOrder(state, order)
+            onlyStateUpdate(res)
+        )
+        .then(
+            val key1: PoolId = {fee: 5, tick: -106, tokenPair: ("A", "B")}
+            val depositMsg: DepositMsg = depositMsgPool(key1, (0, 10), true)
+            val res = deposit(state, depositMsg)
+            all{
+                require(not(res.error == "nil")),
+                onlyStateUpdate(res)
+            }
+        )
+        .then(
+            val key1: PoolId = {fee: 5, tick: -105, tokenPair: ("A", "B")}
+            val depositMsg: DepositMsg = depositMsgPool(key1, (0, 10), true)
+            val res = deposit(state, depositMsg)
+            all{
+                require(res.error == "nil"),
+                onlyStateUpdate(res)
+            }
+        )
+
+    run behindPoolEnemyLine = 
+        init 
+        .then(
+            val key1: PoolId = {fee: 5, tick: -100, tokenPair: ("A", "B")}
+            val depositMsg: DepositMsg = depositMsgPool(key1, (10, 10), true)
+            val res = deposit(state, depositMsg)
+            all{
+                require(res.error == "nil"),
+                state' = res.state,
+                actionSuccess' = true,
+                postconditionOK' = true,
+                actionTaken' = {name: "DepositPool", message: DepositPoolSubType(depositMsg)}
+            }            
+        ) 
+        .then(
+            val key1: PoolId = {fee: 3, tick: -100, tokenPair: ("A", "B")}
+            val depositMsg: DepositMsg = depositMsgPool(key1, (10, 10), true)
+            val res = deposit(state, depositMsg)
+            all{
+                require(res.error == "nil"),
+                state' = res.state,
+                actionSuccess' = true,
+                postconditionOK' = true,
+                actionTaken' = {name: "DepositPool", message: DepositPoolSubType(depositMsg)}
+            }            
+        )        
+        .then(
+            val key1: PoolId = {fee: 5, tick: -80, tokenPair: ("A", "B")}
+            val depositMsg: DepositMsg = depositMsgPool(key1, (10, 10), true)
+            val res = deposit(state, depositMsg)
+            all {
+                state' = res.state,
+                require(res.error == "Pool behind enemy lines"),
+                actionSuccess' = false,
+                actionTaken' = {name: "DepositPool", message: DepositPoolSubType(depositMsg)},
+                postconditionOK' = true
+            }
+        )
     
     // The runs showcases how a reserves ratio changed from
     // 1/73 = 0.0136 to 4/724 = 0.0055

@@ -37,7 +37,6 @@ module dexEvolution {
         // advanceTimeAction,
         // withdrawPoolAction,
         depositAction,
-        // dep(0, 1, true, -4)
         // singlehopSwapAction
     }
 
@@ -137,11 +136,12 @@ module dexEvolution {
         }
         
         val result = deposit(state, msg)
+        val success = result.error == "nil"
         all {
             require(providedAmounts._1 > 0 or providedAmounts._2 > 0),
-            actionSuccess' = result.error == "nil",
+            actionSuccess' = success,
             state' = result.state,
-            postconditionOK' = depositPostcondition(state, result.state, msg),
+            postconditionOK' = if (success) depositPostcondition(state, result.state, msg) else true,
             actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
         }
     
