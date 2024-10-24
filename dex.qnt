@@ -13,19 +13,19 @@ module Dex {
 
 
     pure def withdrawPool(state: State, msg: WithdrawPoolMsg) : Result = {
-      // deposits and poolWithdraws variable management
-      val pair =  orderTokenPair(msg.tokenPair)
-      val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
-      val poolId = getPoolId(pair, tick, msg.fee)
-      // pool must exist
-      val pool = state.pools.get(poolId)
-      val outAmounts = computeAmountsWithdrawPool(pool.reserves, pool.shares, msg.amount)
-      // poolWithdraws variable management
-      val withdrawns = state.poolWithdraws.get(msg.creator).get(poolId)
-      val updatedWithdraws = (withdrawns._1 + outAmounts._1, withdrawns._2 + outAmounts._2)
-      ok({poolWithdraws: state.poolWithdraws.set(msg.creator, state.poolWithdraws.get(msg.creator).set(poolId, updatedWithdraws)),
-          ...state})                  
-      //ok(state)
+        // deposits and poolWithdraws variable management
+        //   @audit-info These three lines are a candidate to be replaced throughout the whole codebase
+        val pair =  orderTokenPair(msg.tokenPair)
+        val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
+        val poolId = getPoolId(pair, tick, msg.fee)
+        // pool must exist
+        val pool = state.pools.get(poolId)
+        val outAmounts = computeAmountsWithdrawPool(pool.reserves, pool.shares, msg.amount)
+        // poolWithdraws variable management
+        val withdrawns = state.poolWithdraws.get(msg.creator).get(poolId)
+        val updatedWithdraws = (withdrawns._1 + outAmounts._1, withdrawns._2 + outAmounts._2)
+        ok({poolWithdraws: state.poolWithdraws.set(msg.creator, state.poolWithdraws.get(msg.creator).set(poolId, updatedWithdraws)),
+            ...state})                  
     }
 
     pure def isTokenBehindEnemyLines(state: State, isPlacingToken0: bool, pair: TokenPair, tick: TickIndex, fee: TickIndex) : bool = 
