@@ -119,13 +119,21 @@ module dexEvolution {
         )
         nondet creatorAndPair = oneOf(creatorsAndPairs)
         val tokenPair = creatorAndPair.tokenPair        
-        val c = creatorAndPair.creator
-        nondet amountToken1 = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
-        nondet amountToken2 = oneOf(0.to(state.coins.get(c).get(tokenPair._2)))
+        val c = creatorAndPair.creator        
         nondet fee = oneOf(0.to(MAX_FEE))
         nondet tick = oneOf(TICKS)
-        val providedAmounts = (amountToken1, amountToken2)
-        
+
+        nondet amountTokenX = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
+        nondet amountTokenY = oneOf(0.to(state.coins.get(c).get(tokenPair._2)))
+        // we want to let simulation more often go with single-sided deposits (because they are more common, and more likely not to
+        // fail due to being behind enemy lines (BEL)
+        nondet isDoublesided = oneOf(Set(true, false))
+        nondet placeAtFirst = oneOf(Set(true, false))
+        val providedAmounts = 
+            if (isDoublesided) (amountTokenX, amountTokenY)
+            else if (placeAtFirst) (amountTokenX, 0) 
+            else (0, amountTokenY)
+                
         val msg: DepositMsg = {
             creator: c,
             tokenPair: tokenPair,
