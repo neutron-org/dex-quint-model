@@ -35,7 +35,7 @@ module dexEvolution {
         // cancelLimitOrderAction,
         // withdrawLimitOrderAction,
         // advanceTimeAction,
-        // withdrawPoolAction,
+        withdrawPoolAction,
         depositAction,
         // singlehopSwapAction
     }
@@ -60,11 +60,10 @@ module dexEvolution {
             nondet creator = oneOf(relevantCreatorsAndPools.keys())
             nondet poolKey = oneOf(relevantCreatorsAndPools.get(creator))
             nondet amountToWithdraw = oneOf(1.to(state.poolShares.get(creator).get(poolKey)))
-            // @audit-info Incorporate in the evolution
             val msg = {
                 creator: creator,
                 tokenPair: poolKey.tokenPair,
-                amount: amountToWithdraw,
+                sharesAmount: amountToWithdraw,
                 tick: poolKey.tick,
                 fee: poolKey.fee
             }
@@ -320,8 +319,8 @@ action withdrawLimitOrderAction: bool =
       CREATORS.forall(
         creator => state.deposits.get(creator).keys().forall(
             poolId => if (state.poolShares.get(creator).get(poolId) == 0)
-                        val deposit = state.deposits.get(creator).get(poolId)
-                        val withdrawnAmounts = state.poolWithdraws.get(creator).get(poolId)
+                        val deposit = state.deposits.get(creator).getOrElse(poolId, {amounts: (0,0), swaps: false})
+                        val withdrawnAmounts = state.poolWithdraws.get(creator).getOrElse(poolId, (0,0))
                         if (deposit.swaps) withdrawnAmounts._1 > deposit.amounts._1 and withdrawnAmounts._2 > deposit.amounts._2
                         else withdrawnAmounts._1 == deposit.amounts._1 and withdrawnAmounts._2 == deposit.amounts._2
                       else true))

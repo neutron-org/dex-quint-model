@@ -24,7 +24,7 @@ module postconditions {
       val reservesAfter = after.pools.get(poolId).reserves
       val sharesBefore = before.pools.get(poolId).shares
       val sharesAfter = after.pools.get(poolId).shares
-      val outAmounts = computeAmountsWithdrawPool(reservesBefore, sharesBefore, msg.amount)
+      val outAmounts = computeAmountsWithdrawnPool(reservesBefore, sharesBefore, msg.sharesAmount)
       // ** State changes validation **
       // Reserves are updated
       reservesAfter._1 == reservesBefore._1 - outAmounts._1 and reservesAfter._1 >= 0 and
@@ -35,8 +35,8 @@ module postconditions {
       // Shares are burned
       // We assume that we do not remove empty shares
       after.poolShares.get(msg.creator).get(poolId) >= 0 and
-      after.poolShares.get(msg.creator).get(poolId) == before.poolShares.get(msg.creator).get(poolId) - msg.amount and
-      sharesAfter >= 0 and sharesAfter == sharesBefore - msg.amount
+      after.poolShares.get(msg.creator).get(poolId) == before.poolShares.get(msg.creator).get(poolId) - msg.sharesAmount and
+      sharesAfter >= 0 and sharesAfter == sharesBefore - msg.sharesAmount
       // ** Specification invariants **
 
 

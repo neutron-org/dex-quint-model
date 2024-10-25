@@ -58,7 +58,7 @@ module types {
     type WithdrawPoolMsg = {
             creator: Addr,
             tokenPair: (Token, Token),
-            amount: int,
+            sharesAmount: int,
             tick: TickIndex,
             fee: Fee,
         }
@@ -179,6 +179,7 @@ module types {
         blockNumber: BlockTime,       
 
         // helper state variables, to be used in invariants
+        // total deposits, not to be updated as withdraws happen
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
         poolWithdraws: Addr -> PoolId -> (int, int)
     }

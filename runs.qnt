@@ -38,6 +38,61 @@ module runs {
         fee: poolKey.fee,
         autoswap: doAutoswap
     }
+    action helper = 
+        val msg: DepositMsg = {
+                amountPair: (0, 1),
+                autoswap: false,
+                creator: "Carol",
+                fee: 4,
+                tick: -2,
+                tokenPair: ("A", "C")
+            }
+            val res = deposit(state, msg)
+            onlyStateUpdate(res)
+    
+    run withdrawIssue = 
+        init
+        .then(
+            all{
+                helper,                
+            }            
+        )
+        .then(
+            all{
+                onlyStateUpdate(ok(state)),
+                val key: PoolId = {fee: 4, tick: -2, tokenPair: ("A", "C")}
+                require(                    
+                    // The weird formulation is to support both cases,
+                    // with FORBID_ZERO_SHARES = false and FORBID_ZERO_SHARES = true
+                    size(state.pools.keys()) > 0
+                    implies
+                    state.pools.get(key).shares > 0
+                )
+            }
+        )
+    
+    run repeatedWithdrawIssue = 
+        init
+        .then(
+            all{
+                1000.reps(_ => helper),                
+            }            
+        )
+        .then(
+            all{
+                onlyStateUpdate(ok(state)),
+                val key: PoolId = {fee: 4, tick: -2, tokenPair: ("A", "C")}
+                require(                    
+                    // The weird formulation is to support both cases,
+                    // with FORBID_ZERO_SHARES = false and FORBID_ZERO_SHARES = true
+                    size(state.pools.keys()) > 0
+                    implies
+                    state.pools.get(key).shares > 0
+                )
+            }
+        )
+    
+    
 
     run behindTrancheEnemyLines = 
         init

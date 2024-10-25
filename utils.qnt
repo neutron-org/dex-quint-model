@@ -76,7 +76,7 @@ module utils {
     pure def computePoolValue(reserves: (int, int), tick0To1: int): int = 
         val tick1To0 = -tick0To1
         val price1to0 = priceFromTick(tick1To0)
-        reserves._1 + reserves._2.fromInt().mul(price1to0).truncate()
+        reserves._1 + mulInt(price1to0, reserves._2).truncate()
 
     pure def computeDepositValue(amounts: (int, int), tick0To1: int): int = computePoolValue(amounts, tick0To1)
 
@@ -473,10 +473,21 @@ module utils {
     // LP.2 in specification invariants
     // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
     pure def computeAutoswapFee(residualAmounts: (int, int), tick0To1: TickIndex, fee: TickIndex): Dec =
-        mulInt(
-            one.sub(priceFromTick(fee)),
-            computeDepositValue(residualAmounts, tick0To1)
-            )
+        val res0 : Dec = residualAmounts._1.fromInt()
+        val res1 : Dec = residualAmounts._2.fromInt()
+        val factor: Dec = one.sub(priceFromTick(fee))
+        val price1To0: Dec = priceFromTick(-tick0To1)
+        add(
+            res0.mul(factor),
+            res1.mul(factor).mul(price1To0)
+        )
+        
+        // TODO: the problem is still here ==> reserves grew, but shares not given
+
+        // mulInt(
+        //     one.sub(priceFromTick(fee)),
+        //     computeDepositValue(residualAmounts, tick0To1)
+        //     )
         
 
     // @audit-info not sure if to compute depositValue when autoswapping I should use the full amount in the
@@ -556,12 +567,15 @@ module utils {
 
     // WITHDRAW POOL RELATED FUNCTIONS
 
-    // It also mimics the implementation
     // Assumes that totalShares > 0, which is checked by the invariants
     // LP.4 in specification invariants
-    pure def computeAmountsWithdrawPool(reserves: (int, int), totalShares: int, shares: int): (int, int) =
-      val proRataShare = shares.fromInt().div(totalShares.fromInt()).truncate()
-      (proRataShare * reserves._1, proRataShare * reserves._2)
+    pure def computeAmountsWithdrawnPool(reserves: (int, int), totalShares: int, sharesToRemove: int): (int, int) =
+
+        // We mimic the implementation here for capturing truncation. The spec gives a more intuitive expression,
+        // proRataShare = sharesToRemove / totalShares, which is then multiplies with total reserves.
+        val outAmount0 = fromRatio(reserves._1*sharesToRemove, totalShares).truncate()
+        val outAmount1 = fromRatio(reserves._2*sharesToRemove, totalShares).truncate()
+        (outAmount0, outAmount1)
 
     pure def bothSides(p: Pool): bool = 
         p.reserves._1 > 0 and p.reserves._2 > 0
