@@ -111,53 +111,60 @@ module Dex {
             val autoswapFee = if (performAutoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
             val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, tick0To1, autoswapFee)
 
-            if (outShares == 0 and FORBID_ZERO_SHARES)
-                {state: state, error: "No shares created"}
-            else
+            if (outShares == 0 and FORBID_ZERO_SHARES) {state: state, error: "No shares created"} else
 
-                // updating the pool shares
-                val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
-                val updatedShares = state.poolShares.put(
-                    msg.creator,
-                    state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
+            // updating the pool shares
+            val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
+            val updatedShares = state.poolShares.put(
+                msg.creator,
+                state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
+            )
+
+            // updating the pools        
+            val updatedPools = state.pools.put(
+                poolId,
+                {
+                    reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
+                    shares: pool.shares + outShares
+                }
+            )                
+            
+            val updatedDeposits = state.deposits
+                // first, mark existing deposits in the same pool as having a swap                
+                .keys().mapBy(user => state.deposits.get(user).keys().mapBy(id =>
+                    val d = state.deposits.get(user).get(id)
+                    if (id == poolId) {swaps: d.swaps or autoswapFee.gt(zero), ...d}
+                    else d
+                    ) 
                 )
-
-                // updating the pools        
-                val updatedPools = state.pools.put(
-                    poolId,
-                    {
-                        reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
-                        shares: pool.shares + outShares
-                    }
+                // then, set the information about the new deposit
+                // If the new deposit already existed, its swaps field is updated
+                .setBy(msg.creator, oldMap => 
+                    val oldValue = oldMap.getOrElse(poolId, {amounts: (0,0), swaps: false})                                                
+                    oldMap.put(
+                        poolId,
+                        {amounts: (oldValue.amounts._1 + inAmounts._1, oldValue.amounts._2 + inAmounts._2), 
+                        ...oldValue}
+                    )
                 )
+            
+            
 
-                // deposits and poolWithdraws variable management
-                val preExistingDeposit = 
-                    state.deposits.get(msg.creator).has(poolId) and state.poolShares.get(msg.creator).get(poolId) > 0                        
-                val deposit = if (preExistingDeposit) state.deposits.get(msg.creator).get(poolId)
-                            else {amounts: (0,0), swaps: false}
+            val updatedCreatorCoins = state.coins.get(msg.creator).setBy(
+                pair._1, old => old - inAmounts._1
+            ).setBy(
+                pair._2, old => old - inAmounts._2
+            )
+
+            val updatedState = {
+                deposits: updatedDeposits,
+                poolShares: updatedShares,
+                pools: updatedPools,
+                coins: state.coins.set(msg.creator, updatedCreatorCoins),
+                ...state
+                }
                 
-                val updatedDeposit = {
-                    amounts: (deposit.amounts._1 + inAmounts._1, deposit.amounts._2 + inAmounts._2),
-                    // If the autoswap was enabled, and the fee > 0 is charged, we are treating it as if there were a swap
-                    swaps: if (preExistingDeposit) deposit.swaps or autoswapFee.gt(zero) else false
-                    }
-                
-                val updatedCreatorCoins = state.coins.get(msg.creator).setBy(
-                    pair._1, old => old - inAmounts._1
-                ).setBy(
-                    pair._2, old => old - inAmounts._2
-                )
-
-                val updatedState = {
-                    deposits: state.deposits.setBy(msg.creator, old => old.put(poolId, updatedDeposit)),            
-                    poolShares: updatedShares,
-                    pools: updatedPools,
-                    coins: state.coins.set(msg.creator, updatedCreatorCoins),
-                    ...state
-                    }
-                    
-                ok(updatedState)                  
+            ok(updatedState)                  
     }
 
 
