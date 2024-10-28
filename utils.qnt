@@ -202,8 +202,9 @@ module utils {
     
 
     pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool): PoolId =
+        // start with a max_tick as initial, so that as soon as there is something found we replace the initial tick
         val initTick = if (isPairNormalized) MAX_TICK else -MAX_TICK
-        poolKeys.fold(
+        val minKey = poolKeys.fold(
             // ideally, choose some, but doesn't work in the simulation
             {tokenPair: ("_", "_"), tick: initTick, fee: 0},
             (acc, key) => 
@@ -211,8 +212,8 @@ module utils {
                     key
                 else 
                     acc
-
         )
+        minKey
 
     
        
@@ -274,8 +275,9 @@ module utils {
                     val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized)
                     // the pool price includes the fee
                     val minPoolReserveTick = computeReserveTick(minPoolKey.tick, isPairNormalized, minPoolKey.fee)
-                    // use the tranche key only if its price is strictly lower than that of the pool
-                    if (minTrancheKey.tick < minPoolReserveTick)                        
+                    // use the tranche key only if there are no more pools  or there are pools, but
+                    //  their best price is strictly larger than that of the tranches
+                    if (size(acc.remainingPools) == 0 or minTrancheKey.tick < minPoolReserveTick)                        
                         // I want to know how much I can exchange in this tranche 
                         val tranche = tranches.get(minTrancheKey)
                         val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
@@ -648,8 +650,8 @@ module utils {
         val sharesOwned = usersShares.sharesOwned
         percentUnfilled.mulInt(sharesOwned).truncate()    
 
-    
-        
+
+
         
 
     

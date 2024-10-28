@@ -4,8 +4,8 @@ module consts {
     import dec.* from "lib/dec"
 
     //  Helper vals
-    // pure val CREATORS: Set[Addr] = Set("Alice", "Bob", "Carol")
-    pure val CREATORS: Set[Addr] = Set("Alice", "Bob")
+    pure val CREATORS: Set[Addr] = Set("Alice", "Bob", "Carol")
+    // pure val CREATORS: Set[Addr] = Set("Alice", "Bob")
     pure val INITIAL_CREATORS_BALANCES: Set[int] = Set(1000, 500)
     pure val INITIAL_CREATOR_BALANCE_TEMP: int = 1000
     // pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled, ImmediateOrCancel, FillOrKill, JustInTime, GoodTillTime(-1))
@@ -13,8 +13,8 @@ module consts {
     pure val PRICES: Set[int] = Set(10000000, 11500000, 9500000)
     pure val AMOUNTS: Set[int] = Set(5, 10, 15, 20)
     
-    // pure val TOKENS: Set[Token] = Set("A", "B", "C")
-    pure val TOKENS: Set[Token] = Set("A", "B")
+    pure val TOKENS: Set[Token] = Set("A", "B", "C")
+    // pure val TOKENS: Set[Token] = Set("A", "B")
     pure val TOKEN_PAIRS: Set[TokenPair] = tuples(TOKENS, TOKENS).filter(x => x._1 != x._2)
     pure val TOKEN_NUM_VALUES: Token -> int = Map("A" -> 0, "B" -> 1, "C" -> 2)
     pure val BASE_PRICE: Dec = (10001, 10000)
@@ -28,6 +28,13 @@ module consts {
     val TICKS: Set[TickIndex] = (-MAX_SIMULATION_TICK).to(MAX_SIMULATION_TICK)
     val MAX_AMOUNT = 100
 
+
+    // Constants for different setups when running
     // tolerance for equality comparisons
     val TOLERANCE = 2
+    val FORBID_ZERO_SHARES = true
+    val DEFAULT_CREATOR: Addr = "Alice"
+    val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
+
+    val EMPTY_DEPOSIT_DATA = {amounts: (0,0), swaps: false}
     }

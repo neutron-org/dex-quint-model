@@ -58,7 +58,7 @@ module dec {
         if (gt(zero, a)) (-a._1, a._2)
         else a
 
-    pure def approxEqual(a: Dec, b: Dec, epsilon: Dec): bool =
+    pure def approxEqualDec(a: Dec, b: Dec, epsilon: Dec): bool =
     // assumes epsilon > 0
         gt(
             epsilon,

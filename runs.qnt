@@ -8,97 +8,16 @@ module runs {
     import Dex.* from "dex"
     import dexEvolution.* from "dexEvolution"
     import postconditions.* from "postconditions"
-
-    action unchangedState = all {
-        state' = state,
-        postconditionOK' = postconditionOK,
-        actionTaken' = actionTaken,
-        actionSuccess' = actionSuccess
-
-    }
-
-    // Makes the update to the state, and all other updates are "dummy" updates
-    action onlyStateUpdate(res: Result): bool =         
-        val updatedState = res.state                        
-        all{
-            state' = updatedState,
-            postconditionOK' = false,
-            actionSuccess' = res.error == "nil",
-            actionTaken' = {name: "placeholder", message: Init},
-        }
-        
-
-    val testPoolKey: PoolId = {fee: -2, tick: 2, tokenPair: ("A", "B")}
-    val testCreator = "Alice"
-    pure def depositMsgPool(poolKey: PoolId, amountPair: (int, int), doAutoswap: bool): DepositMsg = {
-        creator: testCreator,
-        tokenPair: poolKey.tokenPair,
-        amountPair: amountPair,
-        tick: poolKey.tick,
-        fee: poolKey.fee,
-        autoswap: doAutoswap
-    }
-    action helper = 
-        val msg: DepositMsg = {
-                amountPair: (0, 1),
-                autoswap: false,
-                creator: "Carol",
-                fee: 4,
-                tick: -2,
-                tokenPair: ("A", "C")
-            }
-            val res = deposit(state, msg)
-            onlyStateUpdate(res)
-    
-    run withdrawIssue = 
-        init
-        .then(
-            all{
-                helper,                
-            }            
-        )
-        .then(
-            all{
-                onlyStateUpdate(ok(state)),
-                val key: PoolId = {fee: 4, tick: -2, tokenPair: ("A", "C")}
-                require(                    
-                    // The weird formulation is to support both cases,
-                    // with FORBID_ZERO_SHARES = false and FORBID_ZERO_SHARES = true
-                    size(state.pools.keys()) > 0
-                    implies
-                    state.pools.get(key).shares > 0
-                )
-            }
-        )
-    
-    run repeatedWithdrawIssue = 
-        init
-        .then(
-            all{
-                1000.reps(_ => helper),                
-            }            
-        )
-        .then(
-            all{
-                onlyStateUpdate(ok(state)),
-                val key: PoolId = {fee: 4, tick: -2, tokenPair: ("A", "C")}
-                require(                    
-                    // The weird formulation is to support both cases,
-                    // with FORBID_ZERO_SHARES = false and FORBID_ZERO_SHARES = true
-                    size(state.pools.keys()) > 0
-                    implies
-                    state.pools.get(key).shares > 0
-                )
-            }
-        )
+    import runsUtils.* from "runsUtils"
     
     
 
-    run behindTrancheEnemyLines = 
+    run behindTrancheEnemyLines_run =
+        val creator = DEFAULT_CREATOR        
         init
         .then(
             val order: PlaceLimitOrderMsg = {
-                creator: "Alice",
+                creator: creator,
                 orderType: GoodTillCancelled,
                 tokenIn: "A",
                 tokenOut: "B",
@@ -111,7 +30,7 @@ module runs {
         )
         .then(
             val key1: PoolId = {fee: 5, tick: -106, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(key1, (0, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (0, 10), true)
             val res = deposit(state, depositMsg)
             all{
                 require(not(res.error == "nil")),
@@ -120,19 +39,21 @@ module runs {
         )
         .then(
             val key1: PoolId = {fee: 5, tick: -105, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(key1, (0, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (0, 10), true)
             val res = deposit(state, depositMsg)
             all{
+                // now we are behind enemy lines
                 require(res.error == "nil"),
                 onlyStateUpdate(res)
             }
         )
 
-    run behindPoolEnemyLine = 
+    run behindPoolEnemyLine_run = 
+        val creator = DEFAULT_CREATOR
         init 
         .then(
             val key1: PoolId = {fee: 5, tick: -100, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(key1, (10, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
             val res = deposit(state, depositMsg)
             all{
                 require(res.error == "nil"),
@@ -144,7 +65,7 @@ module runs {
         ) 
         .then(
             val key1: PoolId = {fee: 3, tick: -100, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(key1, (10, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
             val res = deposit(state, depositMsg)
             all{
                 require(res.error == "nil"),
@@ -156,7 +77,7 @@ module runs {
         )        
         .then(
             val key1: PoolId = {fee: 5, tick: -80, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(key1, (10, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
             val res = deposit(state, depositMsg)
             all {
                 state' = res.state,
@@ -167,46 +88,9 @@ module runs {
             }
         )
     
-    // The runs showcases how a reserves ratio changed from
-    // 1/73 = 0.0136 to 4/724 = 0.0055
-    // In the inverse, this is going from 73 to 181
-    run autoswapIssue = 
-        init 
-        .then(
-            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (1, 73), false)
-            val res = deposit(state, depositMsg)
-            val updatedPool = res.state.pools.get(testPoolKey)
-            all{
-                onlyStateUpdate(res),
-                assert(updatedPool.reservesRatio() == (1, 73))
-            }
-        )
-        .then(
-            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (21, 145), false)
-            val res = deposit(state, depositMsg)
-            val updatedPool = res.state.pools.get(testPoolKey)
-            all{
-                onlyStateUpdate(res),
-                assert(updatedPool.reservesRatio() == (2, 218))
-            })
-        .then(
-            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (21, 217), false)
-            val res = deposit(state, depositMsg)
-            val updatedPool = res.state.pools.get(testPoolKey)
-            all{
-                onlyStateUpdate(res),
-                assert(updatedPool.reservesRatio() == (3, 435))
-            })
-        .then(
-            val depositMsg: DepositMsg = depositMsgPool(testPoolKey, (21, 289), false)
-            val res = deposit(state, depositMsg)
-            val updatedPool = res.state.pools.get(testPoolKey)
-            all{
-                onlyStateUpdate(res),
-                assert(updatedPool.reservesRatio() == (4, 724))
-            })
+    
 
-    run limitOrderTrade = 
+    run limitOrderTrade_run = 
         init
         .then(
             val bobsOrder: PlaceLimitOrderMsg = {

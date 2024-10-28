@@ -10,7 +10,7 @@ module Dex {
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
 
-    val FORBID_ZERO_SHARES = true
+    
     
 
 
@@ -129,6 +129,7 @@ module Dex {
                 }
             )                
             
+            val oldCreatorsDeposits = state.deposits.getOrElse(msg.creator, Map())
             val updatedDeposits = state.deposits
                 // first, mark existing deposits in the same pool as having a swap                
                 .keys().mapBy(user => state.deposits.get(user).keys().mapBy(id =>
@@ -139,9 +140,9 @@ module Dex {
                 )
                 // then, set the information about the new deposit
                 // If the new deposit already existed, its swaps field is updated
-                .setBy(msg.creator, oldMap => 
-                    val oldValue = oldMap.getOrElse(poolId, {amounts: (0,0), swaps: false})                                                
-                    oldMap.put(
+                .put(msg.creator,
+                    val oldValue = oldCreatorsDeposits.getOrElse(poolId, {amounts: (0,0), swaps: false})                                                
+                    oldCreatorsDeposits.put(
                         poolId,
                         {amounts: (oldValue.amounts._1 + inAmounts._1, oldValue.amounts._2 + inAmounts._2), 
                         ...oldValue}
