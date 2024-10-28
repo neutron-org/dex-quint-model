@@ -314,16 +314,21 @@ action withdrawLimitOrderAction: bool =
                    shares.keys().forall(share => shares.get(share) >= 0))
     
     // Invariant: LP profit from their deposits
-    // LP.5 in specification invariants
+    // simplified LP.5 in specification invariants
     val profitDeposit =
       CREATORS.forall(
         creator => state.deposits.get(creator).keys().forall(
             poolId => if (state.poolShares.get(creator).get(poolId) == 0)
-                        val deposit = state.deposits.get(creator).getOrElse(poolId, {amounts: (0,0), swaps: false})
-                        val withdrawnAmounts = state.poolWithdraws.get(creator).getOrElse(poolId, (0,0))
-                        if (deposit.swaps) withdrawnAmounts._1 > deposit.amounts._1 and withdrawnAmounts._2 > deposit.amounts._2
-                        else withdrawnAmounts._1 == deposit.amounts._1 and withdrawnAmounts._2 == deposit.amounts._2
-                      else true))
+                val deposit = state.deposits.get(creator).getOrElse(poolId, {amounts: (0,0), swaps: false})
+                val withdrawnAmounts = state.poolWithdraws.get(creator).getOrElse(poolId, (0,0))                
+                if (deposit.swaps) computeDepositValue(withdrawnAmounts, poolId.tick) + TOLERANCE > computeDepositValue(deposit.amounts, poolId.tick)
+                else //the equality does not hold due to rounding 
+                    approxEqual(
+                        computeDepositValue(withdrawnAmounts, poolId.tick), 
+                        computeDepositValue(deposit.amounts, poolId.tick), 
+                        TOLERANCE
+                        )
+            else true))
 
     // Invariant: Tranche expiration times always >= -1 (sanity check)
     val expirationTimeSanity = 

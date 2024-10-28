@@ -646,7 +646,10 @@ module utils {
         // Are there perhaps some reasons to stick to the spec calculation?   
         val percentUnfilled = calculatePercentUnfilled(tranche)
         val sharesOwned = usersShares.sharesOwned
-        percentUnfilled.mulInt(sharesOwned).truncate()        
+        percentUnfilled.mulInt(sharesOwned).truncate()    
+
+    
+        
         
 
     

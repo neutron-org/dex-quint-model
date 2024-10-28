@@ -97,7 +97,7 @@ module postconditions {
             //     if (reservesBefore._2 > 0) 
             //         val ratioBefore = fromRatio(reservesBefore._1, reservesBefore._2)
             //         val ratioAfter = fromRatio(reservesAfter._1, reservesAfter._2)
-            //         approxEqual(ratioAfter, ratioBefore, div(ratioBefore, fromInt(5)))
+            //         approxEqualDec(ratioAfter, ratioBefore, div(ratioBefore, fromInt(5)))
             //     else reservesAfter._2 == 0
             // else true
         }
