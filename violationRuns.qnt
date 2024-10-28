@@ -70,11 +70,95 @@ module violationRuns {
                 )
             }
         )
-    
-    
 
+    // ------ The run illustrating the violation of the [NO-LOSS] property
+    // It is a cleared version of the generated trace violations/noLossViolation.itf.json
+
+    run noLossViolation = 
+        val key = {fee: 6, tick: -9, tokenPair: ("B", "C")}
+        init.then(
+            val msg = depositMsgPool("Bob", key, (211,337), true)
+            val res = deposit(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),                
+                require(sharesGained(state, res.state, "Bob", key, 547))
+            }
+        ).then(
+            val msg = withdrawMsgPool("Bob", key, 82)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Bob", "B", 31)),
+                require(coinsGained(state, res.state, "Bob", "C", 50))
+            }
+        ).then(
+            val msg = depositMsgPool("Carol", key, (927, 11), false)
+            val res = deposit(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                // only gets 15 due to autoswap=false
+                require(sharesGained(state, res.state, "Carol", key, 15))
+            }
+        ).then(
+            val msg = withdrawMsgPool("Carol", key, 7)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Carol", "B", 2)),
+                require(coinsGained(state, res.state, "Carol", "C", 4))
+            }
+        ).then(
+            val msg = withdrawMsgPool("Carol", key, 4)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Carol", "B", 1)),
+                require(coinsGained(state, res.state, "Carol", "C", 2))
+            }
+        ).then(
+            val msg = withdrawMsgPool("Carol", key, 1)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Carol", "B", 0)),
+                require(coinsGained(state, res.state, "Carol", "C", 0))
+            }
+        ).then(
+            val msg = withdrawMsgPool("Bob", key, 308)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Bob", "B", 120)),
+                require(coinsGained(state, res.state, "Bob", "C", 192))
+            }
+        ).then(
+            val msg = withdrawMsgPool("Carol", key, 3)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Carol", "B", 1)),
+                require(coinsGained(state, res.state, "Carol", "C", 1))
+            }
+        ).then(all{
+            unchangedState,
+            require(state.poolShares.get("Carol").get(key) == 0),
+            val carolDeposited = computeDepositValue(state.deposits.get("Carol").get(key).amounts, key.tick)
+            val carolWithdraws = computeDepositValue(state.poolWithdraws.get("Carol").get(key), key.tick)
+            carolDeposited > carolWithdraws
+
+        }
+            
+        )
     
-    
+    // ------ The run illustrating the violation of the [POOL-RATIO-CONSTANT] property
     // The runs showcases how a reserves ratio changed from
     // 1/73 = 0.0136 to 4/724 = 0.0055
     // In the inverse, this is going from 73 to 181

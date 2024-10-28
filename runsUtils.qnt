@@ -26,6 +26,27 @@ module runsUtils {
         autoswap: doAutoswap
     }
 
+    pure def sharesGained(before: State, after: State, creator: Addr, poolKey: PoolId, gained: int): bool = {
+        val beforeShares = before.poolShares.get(creator).getOrElse(poolKey, 0)
+        val afterShares = after.poolShares.get(creator).getOrElse(poolKey, 0)
+        afterShares == q::debug("after Shares = ", beforeShares + gained)
+    }
+
+    pure def coinsGained(before: State, after: State, creator: Addr, token: Token, gained: int): bool = {
+        val beforeBalance = before.coins.get(creator).get(token)
+        val afterBalance = after.coins.get(creator).get(token)
+        afterBalance == beforeBalance + gained
+    }
+
+    pure def withdrawMsgPool(creator: Addr, poolKey: PoolId, sharesAmount: int): WithdrawPoolMsg = 
+        {
+            creator: creator,
+            tokenPair: poolKey.tokenPair,
+            sharesAmount: sharesAmount,
+            tick: poolKey.tick,
+            fee: poolKey.fee
+        }
+
     // Makes the update to the state, and all other updates are "dummy" updates
     action onlyStateUpdate(res: Result): bool =         
         val updatedState = res.state                        
