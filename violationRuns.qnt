@@ -71,7 +71,7 @@ module violationRuns {
             }
         )
 
-    // ------ The run illustrating the violation of the [NO-LOSS] property
+    // ------ The run illustrating the violation of the [NO-LOSS] and [NO-GAIN] properties
     // It is a cleared version of the generated trace violations/noLossViolation.itf.json
 
     run noLossViolation = 
@@ -152,11 +152,27 @@ module violationRuns {
             require(state.poolShares.get("Carol").get(key) == 0),
             val carolDeposited = computeDepositValue(state.deposits.get("Carol").get(key).amounts, key.tick)
             val carolWithdraws = computeDepositValue(state.poolWithdraws.get("Carol").get(key), key.tick)
+            // Carol has lost the value she deposited
             carolDeposited > carolWithdraws
 
-        }
-            
-        )
+        }).then(
+            val msg = withdrawMsgPool("Bob", key, 157)
+            val res = withdrawPool(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(coinsGained(state, res.state, "Bob", "B", 62)),
+                require(coinsGained(state, res.state, "Bob", "C", 99))
+            }
+        ).then(all{
+            unchangedState,
+            require(state.poolShares.get("Bob").get(key) == 0),
+            val bobDeposited = computeDepositValue(state.deposits.get("Bob").get(key).amounts, key.tick)
+            val bobWithdrew = computeDepositValue(state.poolWithdraws.get("Bob").get(key), key.tick)
+            // Bob has gained something (even though there were no swaps, so he gained what Carol has lost)
+            bobWithdrew > bobDeposited
+
+        })
     
     // ------ The run illustrating the violation of the [POOL-RATIO-CONSTANT] property
     // The runs showcases how a reserves ratio changed from
