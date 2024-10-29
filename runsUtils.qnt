@@ -26,16 +26,16 @@ module runsUtils {
         autoswap: doAutoswap
     }
 
-    pure def sharesGained(before: State, after: State, creator: Addr, poolKey: PoolId, gained: int): bool = {
+    pure def sharesGained(before: State, after: State, creator: Addr, poolKey: PoolId): int = {
         val beforeShares = before.poolShares.get(creator).getOrElse(poolKey, 0)
         val afterShares = after.poolShares.get(creator).getOrElse(poolKey, 0)
-        afterShares == q::debug("after Shares = ", beforeShares + gained)
+        afterShares - beforeShares
     }
 
-    pure def coinsGained(before: State, after: State, creator: Addr, token: Token, gained: int): bool = {
+    pure def coinsGained(before: State, after: State, creator: Addr, token: Token): int = {
         val beforeBalance = before.coins.get(creator).get(token)
         val afterBalance = after.coins.get(creator).get(token)
-        afterBalance == beforeBalance + gained
+        afterBalance - beforeBalance
     }
 
     pure def withdrawMsgPool(creator: Addr, poolKey: PoolId, sharesAmount: int): WithdrawPoolMsg = 
