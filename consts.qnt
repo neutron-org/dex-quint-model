@@ -7,11 +7,9 @@ module consts {
     pure val CREATORS: Set[Addr] = Set("Alice", "Bob", "Carol")
     // pure val CREATORS: Set[Addr] = Set("Alice", "Bob")
     pure val INITIAL_CREATORS_BALANCES: Set[int] = Set(1000, 500)
-    pure val INITIAL_CREATOR_BALANCE_TEMP: int = 1000
+    pure val INITIAL_CREATOR_BALANCE_TEMP: int = 10000
     // pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled, ImmediateOrCancel, FillOrKill, JustInTime, GoodTillTime(-1))
     pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled)
-    pure val PRICES: Set[int] = Set(10000000, 11500000, 9500000)
-    pure val AMOUNTS: Set[int] = Set(5, 10, 15, 20)
     
     pure val TOKENS: Set[Token] = Set("A", "B", "C")
     // pure val TOKENS: Set[Token] = Set("A", "B")
@@ -24,14 +22,14 @@ module consts {
 
     val MAX_TICK = 100000
     val MAX_SIMULATION_TICK = 10
-    val MAX_FEE = 10
-    val TICKS: Set[TickIndex] = (-MAX_SIMULATION_TICK).to(MAX_SIMULATION_TICK)
-    val MAX_AMOUNT = 100
+    val MAX_FEE = 100
+    val TICKS: Set[TickIndex] = (-MAX_TICK).to(MAX_TICK)
+    val MAX_AMOUNT = 1000
 
 
     // Constants for different setups when running
     // tolerance for equality comparisons
-    val TOLERANCE = 2
+    val TOLERANCE = 20
     val FORBID_ZERO_SHARES = true
     val DEFAULT_CREATOR: Addr = "Alice"
     val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")

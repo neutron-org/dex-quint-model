@@ -79,15 +79,15 @@ module postconditions {
                 outShares),        
             sharesAfter == sharesBefore + outShares,
             // Pool value increases
-            val poolValueBefore = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick0To1) else 0
-            val poolValueAfter = computePoolValue(after.pools.get(poolId).reserves, tick0To1)
+            val poolValueBefore: Dec = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick0To1) else zero
+            val poolValueAfter: Dec = computePoolValue(after.pools.get(poolId).reserves, tick0To1)
             // @audit-info This will not be true for small increases, where due to truncation
             // in the calculation of the pool value, the pool value could remain the same.
             // Thus, commenting out
-            // 
+            // @audit-issue come back to this after recent fix to the model
             // poolValueAfter > poolValueBefore,
             // Pool value does not decrease
-            poolValueAfter >= poolValueBefore,
+            poolValueAfter.gte(poolValueBefore),
             
             // Pool ratio is maintained if no autoswap and both sides of the pool exist
             // @audit-issue DOES NOT HOLD
@@ -223,7 +223,7 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
         poolsUpdateInfo.keys().forall(id =>
             val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
             val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
-            poolValueAfter > poolValueBefore
+            poolValueAfter.gt(poolValueBefore)
         )
       }
 

@@ -73,12 +73,12 @@ module utils {
         }
 
     
-    pure def computePoolValue(reserves: (int, int), tick0To1: int): int = 
+    pure def computePoolValue(reserves: (int, int), tick0To1: int): Dec = 
         val tick1To0 = -tick0To1
         val price1to0 = priceFromTick(tick1To0)
-        reserves._1 + mulInt(price1to0, reserves._2).truncate()
+        fromInt(reserves._1).add(mulInt(price1to0, reserves._2))
 
-    pure def computeDepositValue(amounts: (int, int), tick0To1: int): int = computePoolValue(amounts, tick0To1)
+    pure def computeDepositValue(amounts: (int, int), tick0To1: int): Dec = computePoolValue(amounts, tick0To1)
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int) : bool =
         // @audit-info What is the best practice to encode assumptions on pure functions,
@@ -503,11 +503,11 @@ module utils {
     pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int, autoswapFee: Dec): int =
         
         val poolValue = computePoolValue(reserves, tick)
-        val depositValue: int = computeDepositValue(amounts, tick)      
-        if (poolValue == 0) depositValue
+        val depositValue: Dec = computeDepositValue(amounts, tick)      
+        if (poolValue.equal(zero)) depositValue.truncate()
         else 
-            val shareValue = intDivDec(existingShares, poolValue.fromInt().add(autoswapFee))
-            sub(depositValue.fromInt(), autoswapFee).mul(shareValue).truncate()
+            val shareValue = intDivDec(existingShares, poolValue.add(autoswapFee))
+            sub(depositValue, autoswapFee).mul(shareValue).truncate()
 
     // This specifies the implementation
     // fee = (upperTickIndex - lowerTickIndex) / 2

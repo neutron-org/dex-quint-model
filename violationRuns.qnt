@@ -127,6 +127,7 @@ module violationRuns {
     // The runs showcases how a reserves ratio changed from
     // 1/73 = 0.0136 to 4/724 = 0.0055
     // In the inverse, this is going from 73 to 181
+    val testPoolKey: PoolId = {fee: 4, tick: -2, tokenPair: DEFAULT_TOKEN_PAIR}
     run autoswapIssue = 
         val creator = DEFAULT_CREATOR
         init 
