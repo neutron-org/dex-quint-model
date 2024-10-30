@@ -200,15 +200,14 @@ module utils {
                     acc
         )
     
-
-    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isPairNormalized: bool): PoolId =
+    pure def getMinimumPoolKey(poolKeys: Set[PoolId], isToken0Liquidity: bool): PoolId =
         // start with a max_tick as initial, so that as soon as there is something found we replace the initial tick
-        val initTick = if (isPairNormalized) MAX_TICK else -MAX_TICK
+        val initTick = if (isToken0Liquidity) -MAX_TICK else MAX_TICK
         val minKey = poolKeys.fold(
             // ideally, choose some, but doesn't work in the simulation
             {tokenPair: ("_", "_"), tick: initTick, fee: 0},
             (acc, key) => 
-                if (poolLTE(key, acc, isPairNormalized)) 
+                if (poolLTE(key, acc, isToken0Liquidity)) 
                     key
                 else 
                     acc
@@ -238,6 +237,7 @@ module utils {
         // I need this for pools because they are stored only under normalized pairs
         val normalizedPair = orderTokenPair(inOutPair)
         val isPairNormalized = inOutPair == normalizedPair
+        val askingForToken0Liquidity = inOutPair._2 == normalizedPair._1
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         // checked: it should be both.
@@ -251,7 +251,7 @@ module utils {
                 })
                         
         val relevantPools = pools.keys()
-                .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, isPairNormalized, id.fee) <= maxPriceTick)            
+            .filter(id => id.tokenPair == normalizedPair and computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick)            
             
         val relevantLiquiditySize = size(relevantTranches) + size(relevantPools)
 
@@ -272,9 +272,12 @@ module utils {
                 else
                     // find me the minumum tranche key and the minimum pool key
                     val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches)
-                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, isPairNormalized)
+                    val minPoolKey = getMinimumPoolKey(acc.remainingPools, askingForToken0Liquidity)
+                    
                     // the pool price includes the fee
-                    val minPoolReserveTick = computeReserveTick(minPoolKey.tick, isPairNormalized, minPoolKey.fee)
+                    val minPoolReserveTick = q::debug("minPoolReserveTick = ", 
+                    computeReserveTick(minPoolKey.tick, askingForToken0Liquidity, minPoolKey.fee)
+                    )
                     // use the tranche key only if there are no more pools  or there are pools, but
                     //  their best price is strictly larger than that of the tranches
                     if (size(acc.remainingPools) == 0 or minTrancheKey.tick < minPoolReserveTick)                        
@@ -298,16 +301,16 @@ module utils {
                         val reservesTokenB = if (isPairNormalized) pool.reserves._2 else pool.reserves._1   
                         val exchangeRate = priceFromTick(minPoolReserveTick)                            
                         val requiredAmount = mulInt(exchangeRate, acc.remainingAmountToExchange).truncate()                        
-                        val userGetsFromPool = if (requiredAmount <= reservesTokenB) requiredAmount else  reservesTokenB
-                        // @audit-issue should we take into account numerical considerations here and instead of dividing,
-                        // calculate the opposite price tick and multiply?
-                        val userPutsIntoPool = intDivDec(userGetsFromPool, exchangeRate).truncate()
+                        val userGetsFromPool = if (requiredAmount <= reservesTokenB) requiredAmount else  reservesTokenB                        
+                        val userPutsIntoPool = 
+                            if (requiredAmount <= reservesTokenB) acc.remainingAmountToExchange 
+                            else intDivDec(reservesTokenB, exchangeRate).truncate()
 
                         {
                             remainingPools: acc.remainingPools.setRemove(minPoolKey),
                             remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
                             outAmount: acc.outAmount + userGetsFromPool,
-                            poolUpdates: acc.poolUpdates.set(
+                            poolUpdates: acc.poolUpdates.put(
                                 minPoolKey, 
                                 if (isPairNormalized) 
                                     {token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool} 
@@ -592,9 +595,9 @@ module utils {
         else
             t1.tick <= t2.tick
 
-    pure def poolLTE(p1: PoolId, p2: PoolId, isPairNormalized: bool): bool =
-        val tick1 = computeReserveTick(p1.tick, isPairNormalized, p1.fee)
-        val tick2 = computeReserveTick(p2.tick, isPairNormalized, p2.fee)
+    pure def poolLTE(p1: PoolId, p2: PoolId, isToken0Liquidity: bool): bool =
+        val tick1 = q::debug("tick1 is ", computeReserveTick(p1.tick, isToken0Liquidity, p1.fee))
+        val tick2 = q::debug("tick2 is ", computeReserveTick(p2.tick, isToken0Liquidity, p2.fee))
         // if the ticks are the same
         if (tick1 == tick2)
             // then order by fee

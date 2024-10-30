@@ -10,7 +10,77 @@ module runs {
     import postconditions.* from "postconditions"
     import runsUtils.* from "runsUtils"
     
+    run test = 
+        val poolKey1 =  {fee: 10, tick: -23027, tokenPair: ("A", "B")}    
+        val poolKey2 =  {fee: 10, tick: -200, tokenPair: ("A", "B")}    
+        val msg: DepositMsg = depositMsgPool("Bob", poolKey1, (200, 0), true)
+        val msg2 = depositMsgPool("Carol", poolKey2, (200,0), true)
+        init
+        .then(onlyStateUpdate(deposit(state, msg)))
+        .then(onlyStateUpdate(deposit(state, msg2)))
     
+    run swapExample_run =
+        val poolKey = {fee: 10, tick: -23027, tokenPair: ("A", "B")}    
+        val trancheKey = {id: 1, makerToken: "A", takerToken: "B", tick: 23037}        
+        init 
+        .then(
+            val msg: PlaceLimitOrderMsg = {
+                creator: "Alice",
+                orderType: GoodTillCancelled,
+                tokenIn: trancheKey.makerToken,
+                tokenOut: trancheKey.takerToken,
+                amountIn: 100,
+                tick: trancheKey.tick,
+                maxAmountOut: -1
+            }
+            val res = placeLimitOrder(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.error == "nil")                
+            }
+        )
+        .then(
+            val msg: DepositMsg = depositMsgPool("Bob", poolKey, (10, 0), true)
+            val res = deposit(state, msg)
+            onlyStateUpdate(res)
+        )
+        .then(
+            val msg: SwapMsg = {
+                creator: "Carol",
+                tokenPair: ("B", "A"),
+                amount: 50,
+                limitPriceTick: 30000
+            }
+            val res = singlehopSwap(state, msg)
+            val tranche = res.state.tranches.get(trancheKey)
+            val pool  = res.state.pools.get(poolKey)
+            all{
+                require(res.error == "nil"),
+                // the swap didn't reach the tranche
+                require(tranche.isFresh),
+                require(pool.reserves == (6, 50) and res.state.coins.get("Carol").get("A") == 10004),
+                onlyStateUpdate(res)
+            }            
+        )
+        .then(
+            val msg: SwapMsg = {
+                creator: "Carol",
+                tokenPair: ("B", "A"),
+                amount: 200,
+                limitPriceTick: 30000
+            }
+            val res = singlehopSwap(state, msg)
+            val tranche = res.state.tranches.get(trancheKey)
+            val pool  = res.state.pools.get(poolKey)
+            all{                
+                onlyStateUpdate(res),
+                require(res.error == "nil"),
+                require(not(tranche.isFresh)),
+                val carolCoins = res.state.coins.get("Carol")
+                require(pool.reserves == (0, 110) and carolCoins.get("A") == 10024 and carolCoins.get("B") == 9750),
+                require(tranche.reservesMaker == 86 and tranche.reservesTaker == 140)
+            }            
+        )
 
     run behindTrancheEnemyLines_run =
         val creator = DEFAULT_CREATOR        

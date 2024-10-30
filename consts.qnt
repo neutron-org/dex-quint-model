@@ -24,7 +24,7 @@ module consts {
     val MAX_SIMULATION_TICK = 10
     val MAX_FEE = 100
     val TICKS: Set[TickIndex] = (-MAX_TICK).to(MAX_TICK)
-    val MAX_AMOUNT = 1000
+    val MAX_AMOUNT = 10000
 
 
     // Constants for different setups when running
