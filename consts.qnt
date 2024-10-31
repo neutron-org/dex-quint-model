@@ -27,6 +27,8 @@ module consts {
     val TICKS: Set[TickIndex] = (-MAX_SIMULATION_TICK).to(MAX_SIMULATION_TICK)
     val MAX_AMOUNT = 10000
 
+    val DEBUG_ENABLED = false
+
 
     // Constants for different setups when running
     // tolerance for equality comparisons

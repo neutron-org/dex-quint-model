@@ -6,7 +6,12 @@ module utils {
     import consts.* from "consts"
     import basicSpells.* from "lib/basicSpells"
 
-    
+    pure def debug(msg, expr) =
+        if (DEBUG_ENABLED)
+            q::debug(msg, expr)
+        else
+            expr
+            
 
     // TRANCHE related functions
     pure def calculatePercentFilled(t: Tranche) : Dec =
