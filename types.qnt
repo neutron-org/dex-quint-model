@@ -180,6 +180,7 @@ module types {
 
         // helper state variables, to be used in invariants
         // total deposits, not to be updated as withdraws happen
+        // @audit-info The `swaps` variable is a candidate to be moved into its own separate variable
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
         poolWithdraws: Addr -> PoolId -> (int, int)
     }

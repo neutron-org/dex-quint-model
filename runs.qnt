@@ -18,7 +18,38 @@ module runs {
         init
         .then(onlyStateUpdate(deposit(state, msg)))
         .then(onlyStateUpdate(deposit(state, msg2)))
-    
+
+    run depositLimitInteraction = 
+        val poolKey = {fee: 39, tick: -130, tokenPair: ("A", "B")}
+        init
+        .then(
+            val msg = depositMsgPool("Bob", poolKey, (0, 6071), true)
+            val res = deposit(state, msg)
+            all{
+                onlyStateUpdate(res),
+                require(res.state.poolShares.get("Bob").get(poolKey) == 5992),
+                require(res.state.pools.get(poolKey).reserves == (0, 6071))
+            }
+        )
+        .then(
+            val msg: PlaceLimitOrderMsg = {
+                creator: "Alice",
+                orderType: GoodTillCancelled,
+                tokenIn: "A",
+                tokenOut: "B",
+                amountIn: 9123,
+                tick: 369,
+                maxAmountOut: -1
+            }
+            val res = placeLimitOrder(state, msg)
+            all{
+                require(res.error == "nil"),
+                require(res.state.pools.get(poolKey).reserves == (6016,0)),
+                require(res.state.deposits.get("Bob").get(poolKey).swaps == true),
+                onlyStateUpdate(res)
+            }
+        )
+
     run swapExample_run =
         val poolKey = {fee: 10, tick: -23027, tokenPair: ("A", "B")}    
         val trancheKey = {id: 1, makerToken: "A", takerToken: "B", tick: 23037}        

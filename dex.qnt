@@ -193,6 +193,17 @@ module Dex {
         else
             // 1) update the pools states
             val updatedPools = updatePools(state.pools, poolsUpdateInfo)
+            // 1a) update the book-keeping of which pools were traded through
+            val updatedDeposits = state.deposits.keys().mapBy(
+                user => state.deposits.get(user).keys().mapBy(
+                    poolId => 
+                    val d = state.deposits.get(user).get(poolId)
+                    if (poolId.in(poolsUpdateInfo.keys())) 
+                        {swaps: true, ...d}
+                    else
+                        d
+                )
+            )
             
             // 2) update the tranches states
             val tradeUpdatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, tranchesUpdateInfo)
@@ -229,6 +240,7 @@ module Dex {
                 tranchesShares: tranchesSharesUpdate.tranchesShares,
                 pools: updatedPools,
                 coins: state.coins.set(msg.creator, updatedUserCoins),
+                deposits: updatedDeposits,
                 ...state
             }
             ok(new_state)
