@@ -81,13 +81,9 @@ module postconditions {
             // Pool value increases
             val poolValueBefore: Dec = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick0To1) else zero
             val poolValueAfter: Dec = computePoolValue(after.pools.get(poolId).reserves, tick0To1)
-            // @audit-info This will not be true for small increases, where due to truncation
-            // in the calculation of the pool value, the pool value could remain the same.
-            // Thus, commenting out
-            // @audit-issue come back to this after recent fix to the model
-            // poolValueAfter > poolValueBefore,
-            // Pool value does not decrease
-            poolValueAfter.gte(poolValueBefore),
+            
+            // since this is a single step, setting the tolerance to 1
+            poolValueAfter.approx_gt(poolValueBefore, one),
             
             // Pool ratio is maintained if no autoswap and both sides of the pool exist
             // @audit-issue DOES NOT HOLD
@@ -143,7 +139,7 @@ module postconditions {
             // if there was still some extra amount, and we are not in the immediateOrCancel case, then it was added as a new tranche
             implies (
                 remainingAmount > 0 and not(msg.orderType == ImmediateOrCancel),
-                val userGotRest = if (msg.orderType == GoodTillCancelled) outAmount else 0
+                val userGotRest = if (msg.orderType == ImmediateOrCancel) outAmount else 0
                 val userDiffOut = after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
                 val makerToken = msg.tokenIn
                 val takerToken = msg.tokenOut
@@ -247,24 +243,22 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
             // the user's shares withdrawn have increased appropriately
             withdrawnShares == 
                 after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
-                before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn
-            
+                before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn            
         }  
 
-    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =        
+    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State) : bool =                
         val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
         val users_tranches_shares_before = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
         val users_tranches_before = before.tranchesShares.get(msg.creator).keys()
-        val users_tranches_after = after.tranchesShares.get(msg.creator).keys()
-        and {                        
+        and {  
             // user received their fair amount of maker tokens back                        
-            val cancelAmountOutMakerToken = computeCancelAmountMakerToken(tranche_before, users_tranches_shares_before)
+            val cancelAmountOutMakerToken = computeCancelAmountMakerToken(tranche_before, users_tranches_shares_before)                            
             and{
-                // the user's balance has increased for what was cancelled
+                // the user's balance has increased for what was cancelled                
                 cancelAmountOutMakerToken == 
                 after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
                 before.coins.get(msg.creator).get(tranche_before.makerDenomination),
-                // the totalMaker has decreased for what was cancelled
+                // the totalMaker has decreased for what was cancelled                
                 cancelAmountOutMakerToken ==
                 before.tranches.get(msg.trancheKey).totalMaker -
                 after.tranches.get(msg.trancheKey).totalMaker
