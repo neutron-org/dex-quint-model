@@ -344,10 +344,11 @@ module utils {
         // updated tranches equal the 'after' state, the rest is unchanged
             before.tranches.keys().forall(trancheKey =>
                 if (tranchesUpdateInfo.keys().contains(trancheKey))
-                    before.tranches.get(trancheKey) ==
+                    after.tranches.get(trancheKey) ==
                     {
                         reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
                         reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                        isFresh: false,
                         ...before.tranches.get(trancheKey),
                     }
                 else
