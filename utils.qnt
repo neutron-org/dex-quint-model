@@ -275,9 +275,8 @@ module utils {
                     val minPoolKey = getMinimumPoolKey(acc.remainingPools, askingForToken0Liquidity)
                     
                     // the pool price includes the fee
-                    val minPoolReserveTick = q::debug("minPoolReserveTick = ", 
-                    computeReserveTick(minPoolKey.tick, askingForToken0Liquidity, minPoolKey.fee)
-                    )
+                    val minPoolReserveTick = computeReserveTick(minPoolKey.tick, askingForToken0Liquidity, minPoolKey.fee)
+                    
                     // use the tranche key only if there are no more pools  or there are pools, but
                     //  their best price is strictly larger than that of the tranches
                     if (size(acc.remainingPools) == 0 or minTrancheKey.tick < minPoolReserveTick)                        
@@ -596,8 +595,8 @@ module utils {
             t1.tick <= t2.tick
 
     pure def poolLTE(p1: PoolId, p2: PoolId, isToken0Liquidity: bool): bool =
-        val tick1 = q::debug("tick1 is ", computeReserveTick(p1.tick, isToken0Liquidity, p1.fee))
-        val tick2 = q::debug("tick2 is ", computeReserveTick(p2.tick, isToken0Liquidity, p2.fee))
+        val tick1 = computeReserveTick(p1.tick, isToken0Liquidity, p1.fee)
+        val tick2 = computeReserveTick(p2.tick, isToken0Liquidity, p2.fee)
         // if the ticks are the same
         if (tick1 == tick2)
             // then order by fee

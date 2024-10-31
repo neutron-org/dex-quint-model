@@ -31,13 +31,13 @@ module dexEvolution {
     }
 
     action step: bool = any {
-        // placeLimitOrderAction,
-        // cancelLimitOrderAction,
-        // withdrawLimitOrderAction,
-        // advanceTimeAction,
+        placeLimitOrderAction,
+        cancelLimitOrderAction,
+        withdrawLimitOrderAction,
+        advanceTimeAction,
         withdrawPoolAction,
         depositAction,
-        // singlehopSwapAction
+        singlehopSwapAction
     }
 
     
@@ -204,7 +204,9 @@ module dexEvolution {
         nondet switchPair = oneOf(Set(true, false))
         val pair = if (switchPair) (existingPair._2, existingPair._1) else existingPair
         nondet creator = oneOf(CREATORS)
-        nondet amount = 1.to(MAX_AMOUNT).oneOf()
+
+        val inTokenTotalAmount = state.coins.get(creator).get(pair._1)
+        nondet amount = 0.to(inTokenTotalAmount).oneOf()
         nondet tick = oneOf(TICKS)
         val msg = {
             creator: creator,
