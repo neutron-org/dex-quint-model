@@ -20,10 +20,11 @@ module consts {
     // good_til value for a limit order
     pure val MAX_FUTURE_BLOCKS: int = 10
 
-    val MAX_TICK = 100000
-    val MAX_SIMULATION_TICK = 10
+    // This value is taken from neutron/x/dex/types/price.go#L20-L20
+    val MAX_TICK = 559680 
+    val MAX_SIMULATION_TICK = 1000
     val MAX_FEE = 100
-    val TICKS: Set[TickIndex] = (-MAX_TICK).to(MAX_TICK)
+    val TICKS: Set[TickIndex] = (-MAX_SIMULATION_TICK).to(MAX_SIMULATION_TICK)
     val MAX_AMOUNT = 10000
 
 
