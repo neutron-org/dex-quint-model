@@ -119,9 +119,9 @@ module postconditions {
             
         )
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
-        val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
-        val remainingAmount = fulfilledOrderInfo.remainingAmount
-        val outAmount = fulfilledOrderInfo.outAmount
+        val tranchesUpdateInfo = debug("tranchesUpdates: ", fulfilledOrderInfo.tranchesUpdates)
+        val remainingAmount = debug("remaining amounot = ", fulfilledOrderInfo.remainingAmount)
+        val outAmount = debug("outAmount = ", fulfilledOrderInfo.outAmount)
 
 
         // A not fully filled fillOrKill: the state is not changed at all
@@ -131,8 +131,7 @@ module postconditions {
         and {
             // pools and tranches are updated correctly
             validatePoolsUpdates(before, after, poolsUpdateInfo),
-            validateTrachesUpdates(before, after, tranchesUpdateInfo),
-
+            validateTranchesUpdates(before, after, tranchesUpdateInfo),
             swapInternallyConsistent(msg, fulfilledOrderInfo),
 
             
@@ -208,7 +207,7 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
         // Reserves are updated
         validatePoolsUpdates(before, after, poolsUpdateInfo),
         // Tranches changes
-        validateTrachesUpdates(before, after, tranchesUpdateInfo),
+        validateTranchesUpdates(before, after, tranchesUpdateInfo),
         // ** Specification invariants **
         // Invariant Swap.1
         val exchangeRate = priceFromTick(msg.limitPriceTick)
@@ -217,10 +216,10 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
         inAmount >= usedAmount,
         // Invariant LP.3
         poolsUpdateInfo.keys().forall(id =>
-            val nontrivialDiff = poolsUpdateInfo.get(id).token0Diff > 0 or poolsUpdateInfo.get(id).token1Diff > 0
+            val nontrivialDiff = abs(poolsUpdateInfo.get(id).token0Diff) > 0 or abs(poolsUpdateInfo.get(id).token1Diff) > 0
             val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
             val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
-            nontrivialDiff implies poolValueAfter.approx_gt(poolValueBefore, one)
+            nontrivialDiff implies poolValueAfter.approx_gt(poolValueBefore, fromInt(3))
         )
       }
 

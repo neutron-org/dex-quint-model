@@ -209,10 +209,11 @@ module Dex {
             val tradeUpdatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, tranchesUpdateInfo)
             // 2a) handle the remaining amount and update tranches accordingly
             val tranchesSharesUpdate = 
-                // no new updates to tranches if the type is ImmediateOrCancel
-                if (msg.orderType == ImmediateOrCancel) 
+                // no new updates to tranches if the type is ImmediateOrCancel, or 
+                // if the remaining amounot is 0
+                if (msg.orderType == ImmediateOrCancel or remainingAmount == 0) 
                     {tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares}
-                else 
+                else //if there is something to be placed
                     val expirationBlock = match msg.orderType {
                         | GoodTillTime(block_time) => block_time
                         | JustInTime => state.blockNumber + 1

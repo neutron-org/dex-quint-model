@@ -8,8 +8,8 @@ module consts {
     // pure val CREATORS: Set[Addr] = Set("Alice", "Bob")
     pure val INITIAL_CREATORS_BALANCES: Set[int] = Set(1000, 500)
     pure val INITIAL_CREATOR_BALANCE_TEMP: int = 10000
-    // pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled, ImmediateOrCancel, FillOrKill, JustInTime, GoodTillTime(-1))
-    pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled)
+    pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled, ImmediateOrCancel, FillOrKill, JustInTime, GoodTillTime(-1))
+    // pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled)
     
     pure val TOKENS: Set[Token] = Set("A", "B", "C")
     // pure val TOKENS: Set[Token] = Set("A", "B")

@@ -345,20 +345,19 @@ module utils {
                 before.pools.get(poolId).reserves == after.pools.get(poolId).reserves
         )
 
-    pure def validateTrachesUpdates(before: State, after: State, tranchesUpdateInfo: TrancheKey -> TrancheUpdateDiff) : bool = 
-        // updated tranches equal the 'after' state, the rest is unchanged
-            before.tranches.keys().forall(trancheKey =>
-                if (tranchesUpdateInfo.keys().contains(trancheKey))
-                    after.tranches.get(trancheKey) ==
-                    {
-                        reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
-                        reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
-                        isFresh: false,
-                        ...before.tranches.get(trancheKey),
-                    }
-                else
-                    before.tranches.get(trancheKey) == after.tranches.get(trancheKey)
-            )
+    pure def validateTranchesUpdates(before: State, after: State, tranchesUpdateInfo: TrancheKey -> TrancheUpdateDiff) : bool = 
+        // for all traded tranches, we check whether the difference matches
+        tranchesUpdateInfo.keys().forall(trancheKey =>
+            after.tranches.get(trancheKey) ==
+            {
+                reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
+                reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                isFresh: false,
+                ...before.tranches.get(trancheKey),
+            }
+        )
+
+        
     
 
     pure def updatePools(pools: PoolId -> Pool, poolUpdates: PoolId -> PoolUpdateDiff): PoolId -> Pool =
