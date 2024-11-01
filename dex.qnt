@@ -343,7 +343,7 @@ module Dex {
         // 3) update the tranche reserves
         val updatedTranche = {
             reservesMaker: tranche.reservesMaker - cancelAmountMakerToken,
-            totalMaker: tranche.totalMaker - cancelAmountMakerToken,
+            totalMaker: tranche.totalMaker - state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned,
             reservesTaker: tranche.reservesTaker - withdrawAmountTakerToken,
             totalTaker: tranche.totalTaker - withdrawAmountTakerToken,
             ...tranche

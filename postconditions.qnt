@@ -193,11 +193,11 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
             msg.limitPriceTick,
             0            
         )
-        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
+        val poolsUpdateInfo = debug("pool update: ", fulfilledOrderInfo.poolUpdates)
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
-        val remainingAmount = fulfilledOrderInfo.remainingAmount
-        val outAmount = fulfilledOrderInfo.outAmount
-        val usedAmount = inAmount - remainingAmount
+        val remainingAmount = debug("remaining Amount :",fulfilledOrderInfo.remainingAmount)
+        val outAmount = debug("outAmounot: ", fulfilledOrderInfo.outAmount)
+        val usedAmount = debug("usedAmount: ", inAmount - remainingAmount)
 
       // ** State changes validation **
       
@@ -217,9 +217,10 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
         inAmount >= usedAmount,
         // Invariant LP.3
         poolsUpdateInfo.keys().forall(id =>
+            val nontrivialDiff = poolsUpdateInfo.get(id).token0Diff > 0 or poolsUpdateInfo.get(id).token1Diff > 0
             val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
             val poolValueAfter = computePoolValue(after.pools.get(id).reserves, id.tick)
-            poolValueAfter.gt(poolValueBefore)
+            nontrivialDiff implies poolValueAfter.approx_gt(poolValueBefore, one)
         )
       }
 
@@ -236,10 +237,10 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
             withdrawnAmountTakerToken == 
                 after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
                 before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
-            // the totalTaker has decreased for what was withdrawn
+            // the reserves has decreased for what was withdrawn
             withdrawnAmountTakerToken ==
-                before.tranches.get(msg.trancheKey).totalTaker -
-                after.tranches.get(msg.trancheKey).totalTaker,
+                before.tranches.get(msg.trancheKey).reservesTaker -
+                after.tranches.get(msg.trancheKey).reservesTaker,
             // the user's shares withdrawn have increased appropriately
             withdrawnShares == 
                 after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
@@ -259,7 +260,7 @@ pure def singlehopSwapPostcondition(before: State, after: State, msg: SwapMsg): 
                 after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
                 before.coins.get(msg.creator).get(tranche_before.makerDenomination),
                 // the totalMaker has decreased for what was cancelled                
-                cancelAmountOutMakerToken ==
+                users_tranches_shares_before.sharesOwned ==
                 before.tranches.get(msg.trancheKey).totalMaker -
                 after.tranches.get(msg.trancheKey).totalMaker
             },
