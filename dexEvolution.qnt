@@ -308,7 +308,7 @@ module dexEvolution {
         )
 
     // Invariant: Tranche expiration times always >= -1 (sanity check)
-    val expirationTimeSanity = 
+    val expirationTimeSanity =
         state.tranches.keys().forall(k => state.tranches.get(k).expirationTime >= -1)
 
     }
