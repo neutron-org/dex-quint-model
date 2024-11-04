@@ -1,11 +1,6 @@
 // -*- mode: Bluespec; -*-
 module dexEvolution {
-    import dec.* from "lib/dec"
     import types.* from "types"
-    import consts.* from "consts"
-    import utils.* from "utils"
-    import basicSpells.* from "lib/basicSpells"
-    import Dex.* from "dex"
     import postconditions.* from "postconditions"
     import baseDexEvolution as base from "baseDexEvolution"
 
