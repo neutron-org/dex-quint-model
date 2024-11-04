@@ -31,13 +31,13 @@ module dexEvolution {
     }
 
     action step: bool = any {
-        placeLimitOrderAction,
-        cancelLimitOrderAction,
-        withdrawLimitOrderAction,
-        advanceTimeAction,
+        placeLimitOrderAction(assignResult),
+        cancelLimitOrderAction(assignResult),
+        withdrawLimitOrderAction(assignResult),
         withdrawPoolAction(assignResult),
-        depositAction,
-        singlehopSwapAction
+        depositAction(assignResult),
+        singlehopSwapAction(assignResult),
+        advanceTimeAction,
     }
 
     // ACTIONS
@@ -72,7 +72,7 @@ module dexEvolution {
     action assignResult(result: Result, msg: Message): bool = all {
         actionSuccess' = result.error == "nil",
         state' = result.state,
-        postconditionOK' = postconditionForMessage(state, result.state, msg),
+        postconditionOK' = if (result.error == "nil") postconditionForMessage(state, result.state, msg) else true,
         actionTaken' = { name: actionForMessage(msg), message: msg }
     }
 
@@ -100,7 +100,7 @@ module dexEvolution {
       }
     }
 
-    action depositAction: bool =
+    action depositAction(processResult: (Result, Message) => bool): bool =
         nondet doAutoswap = oneOf(Set(true, false))
         // a set of {creator: Addr, poolKey: PoolKey} records containing all the pools whose tokens are 
         // the ones of which the creator has >0 coins. We do so by iterating first over creators, and then
@@ -144,17 +144,13 @@ module dexEvolution {
             autoswap: doAutoswap
         }
         
-        val result = deposit(state, msg)
-        val success = result.error == "nil"
         all {
             require(providedAmounts._1 > 0 or providedAmounts._2 > 0),
-            actionSuccess' = success,
-            state' = result.state,
-            postconditionOK' = if (success) depositPostcondition(state, result.state, msg) else true,
-            actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
+            val result = deposit(state, msg)
+            processResult(result, DepositPoolSubType(msg))
         }
 
-    action placeLimitOrderAction: bool = 
+    action placeLimitOrderAction(processResult: (Result, Message) => bool): bool =
         nondet c = oneOf(CREATORS)
         nondet o_init = oneOf(ORDER_TYPES)
         nondet block_delta = oneOf(1.to(MAX_FUTURE_BLOCKS))
@@ -170,7 +166,7 @@ module dexEvolution {
         nondet amount = oneOf(possibleAmounts)
         // @audit-info not implemented for now, so using a trivial value
         val maxAmountOut = amount + 1
-        val limitOrderMsg = {
+        val msg = {
             creator: c,
             orderType: o,
             tick: t,
@@ -179,21 +175,19 @@ module dexEvolution {
             amountIn: amount,
             maxAmountOut: maxAmountOut
         }
-        val res = placeLimitOrder(state, limitOrderMsg)
 
         all {
-            require(limitOrderMsg.amountIn > 0),
-            state' = res.state,
+            require(msg.amountIn > 0),
+            val result = placeLimitOrder(state, msg)
+            processResult(result, PlaceLimitOrderSubType(msg))
             // @audit-info TODO: this check is until Postcondition is updated to support different types
-            postconditionOK' = 
-            if (limitOrderMsg.orderType == GoodTillCancelled ) 
-                placeLimitOrderPostcondition(state, res.state, limitOrderMsg)
-            else true,
-            actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
-            actionSuccess' = res.error == "nil"
+            // postconditionOK' =
+            // if (limitOrderMsg.orderType == GoodTillCancelled )
+            //     placeLimitOrderPostcondition(state, res.state, limitOrderMsg)
+            // else true,
         }     
     
-    action singlehopSwapAction: bool = all {
+    action singlehopSwapAction(processResult: (Result, Message) => bool): bool = all {
         require(state.pools.keys().size() > 0),
         // we will model swapping only the token pairs for which pools already exist
         nondet existingPair = state.pools.keys().map(k => k.tokenPair).oneOf()
@@ -212,26 +206,20 @@ module dexEvolution {
             limitPriceTick: tick
         }
         val result = singlehopSwap(state, msg)
-        all {
-            actionSuccess' = result.error=="nil",
-            state' = result.state,
-            postconditionOK' = singlehopSwapPostcondition(state, result.state, msg),
-            actionTaken' = {name: "swap", message: SwapSubType(msg)}
-        }
+        processResult(result, SwapSubType(msg))
     }
 
-    action withdrawLimitOrderAction: bool = 
+    action withdrawLimitOrderAction(processResult: (Result, Message) => bool): bool =
         val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
         all {
             require(size(creatorKeyTuples) > 0),
             nondet chosenTuple = oneOf(creatorKeyTuples)
             val creator = chosenTuple._1
             val trancheKey = chosenTuple._2
-            val withdrawLimitOrderMsg = {
+            val msg = {
                 creator: creator,
                 trancheKey: trancheKey
             }
-            val res = withdrawLimitOrder(state, withdrawLimitOrderMsg)
             all {
                 require(state.tranches.keys().contains(trancheKey)),
                 // we are not allowing  withdrawing from fresh tranches (there was no trading)
@@ -240,34 +228,28 @@ module dexEvolution {
                 // tranche is attempted.
                 // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
                 require(not(state.tranches.get(trancheKey).isFresh)),
-                state' = res.state,
-                postconditionOK' = withdrawLimitOrderPostcondition(state, res.state, withdrawLimitOrderMsg),
-                actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)},
-                actionSuccess' = res.error == "nil"
+
+                val result = withdrawLimitOrder(state, msg)
+                processResult(result, WithdrawLimitOrderSubType(msg))
             }
         }
 
-    action cancelLimitOrderAction: bool = 
+    action cancelLimitOrderAction(processResult: (Result, Message) => bool): bool =
         // only those addresses that have some tranches can cancel them
         val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
-        all{        
+        all {
             require(size(creatorKeyTuples) > 0),
             // take one of the creators that have some tranches
             nondet chosenTuple = oneOf(creatorKeyTuples)
             val creator = chosenTuple._1
             val trancheKey = chosenTuple._2
-            val cancelLimitOrderMsg = {
+            val msg = {
                 creator: creator,
                 trancheKey: trancheKey
             }
-            val res = cancelLimitOrder(state, cancelLimitOrderMsg)
-            all{
-                state' = res.state,
-                postconditionOK' = cancelLimitOrderPostcondition(state, res.state, cancelLimitOrderMsg),
-                actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)},
-                actionSuccess' = res.error == "nil"
-            }
-    }
+            val result = cancelLimitOrder(state, msg)
+            processResult(result, CancelLimitOrderSubType(msg))
+        }
 
     action advanceSingleBlockAction: bool =
         state' = advanceBlocks(state, 1).state
