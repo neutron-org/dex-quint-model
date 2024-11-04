@@ -12,7 +12,7 @@ module dexEvolution {
     var state: State  
     var postconditionOK: bool
     var actionSuccess: bool
-    var actionTaken: Transition
+    var actionTaken: Message
 
     // STATE MACHINE
     action init = all {
@@ -26,7 +26,7 @@ module dexEvolution {
         )))        
         state' = initState(initCoins),
         postconditionOK' = true,
-        actionTaken' = {name: "init", message: Init},
+        actionTaken' = Init,
         actionSuccess' = true
     }
 
@@ -65,7 +65,7 @@ module dexEvolution {
                 fee: poolKey.fee
             }
             val result = withdrawPool(state, msg)
-            processResult(result, WithdrawPoolSubType(msg))
+            processResult(result, WithdrawPool(msg))
         }
     }
 
@@ -73,30 +73,18 @@ module dexEvolution {
         actionSuccess' = result.error == "nil",
         state' = result.state,
         postconditionOK' = if (result.error == "nil") postconditionForMessage(state, result.state, msg) else true,
-        actionTaken' = { name: actionForMessage(msg), message: msg }
+        actionTaken' = msg
     }
 
     pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
       match message {
-        | DepositPoolSubType(msg) => depositPostcondition(before, after, msg)
-        | PlaceLimitOrderSubType(msg) => placeLimitOrderPostcondition(before, after, msg)
-        | CancelLimitOrderSubType(msg) => cancelLimitOrderPostcondition(before, after, msg)
-        | WithdrawLimitOrderSubType(msg) => withdrawLimitOrderPostcondition(before, after, msg)
-        | WithdrawPoolSubType(msg) => withdrawPoolPostcondition(before, after, msg)
-        | SwapSubType(msg) => singlehopSwapPostcondition(before, after, msg)
+        | DepositPool(msg) => depositPostcondition(before, after, msg)
+        | PlaceLimitOrder(msg) => placeLimitOrderPostcondition(before, after, msg)
+        | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
+        | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
+        | WithdrawPool(msg) => withdrawPoolPostcondition(before, after, msg)
+        | Swap(msg) => singlehopSwapPostcondition(before, after, msg)
         | _ => true
-      }
-    }
-
-    pure def actionForMessage(msg: Message): str = {
-      match msg {
-        | DepositPoolSubType(_) => "deposit"
-        | PlaceLimitOrderSubType(_) => "placeLimitOrder"
-        | CancelLimitOrderSubType(_) => "cancelLimitOrder"
-        | WithdrawLimitOrderSubType(_) => "withdrawLimitOrder"
-        | WithdrawPoolSubType(_) => "withdrawPool"
-        | SwapSubType(_) => "swap"
-        | _ => "unknown"
       }
     }
 
@@ -147,7 +135,7 @@ module dexEvolution {
         all {
             require(providedAmounts._1 > 0 or providedAmounts._2 > 0),
             val result = deposit(state, msg)
-            processResult(result, DepositPoolSubType(msg))
+            processResult(result, DepositPool(msg))
         }
 
     action placeLimitOrderAction(processResult: (Result, Message) => bool): bool =
@@ -179,7 +167,7 @@ module dexEvolution {
         all {
             require(msg.amountIn > 0),
             val result = placeLimitOrder(state, msg)
-            processResult(result, PlaceLimitOrderSubType(msg))
+            processResult(result, PlaceLimitOrder(msg))
             // @audit-info TODO: this check is until Postcondition is updated to support different types
             // postconditionOK' =
             // if (limitOrderMsg.orderType == GoodTillCancelled )
@@ -206,7 +194,7 @@ module dexEvolution {
             limitPriceTick: tick
         }
         val result = singlehopSwap(state, msg)
-        processResult(result, SwapSubType(msg))
+        processResult(result, Swap(msg))
     }
 
     action withdrawLimitOrderAction(processResult: (Result, Message) => bool): bool =
@@ -230,7 +218,7 @@ module dexEvolution {
                 require(not(state.tranches.get(trancheKey).isFresh)),
 
                 val result = withdrawLimitOrder(state, msg)
-                processResult(result, WithdrawLimitOrderSubType(msg))
+                processResult(result, WithdrawLimitOrder(msg))
             }
         }
 
@@ -248,7 +236,7 @@ module dexEvolution {
                 trancheKey: trancheKey
             }
             val result = cancelLimitOrder(state, msg)
-            processResult(result, CancelLimitOrderSubType(msg))
+            processResult(result, CancelLimitOrder(msg))
         }
 
     action advanceSingleBlockAction: bool =
@@ -267,7 +255,7 @@ module dexEvolution {
                 advanceMultipleBlocksAction
             },
             postconditionOK' = postconditionOK,
-            actionTaken' = {name: "advanceTime", message: AdvanceTime},
+            actionTaken' = AdvanceTime,
             actionSuccess' = true
         }        
 
