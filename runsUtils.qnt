@@ -47,13 +47,4 @@ module runsUtils {
             fee: poolKey.fee
         }
 
-    // Makes the update to the state, and all other updates are "dummy" updates
-    action onlyStateUpdate(res: Result): bool =         
-        val updatedState = res.state                        
-        all{
-            state' = updatedState,
-            postconditionOK' = false,
-            actionSuccess' = res.error == "nil",
-            actionTaken' = {name: "placeholder", message: Init},
-        }
     }
