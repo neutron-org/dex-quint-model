@@ -10,11 +10,7 @@ module Dex {
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
 
-    
-    
-
-
-    pure def withdrawPool(state: State, msg: WithdrawPoolMsg) : Result = {
+    pure def withdrawPool(state: State, msg: WithdrawPoolMsg): Result = {
         // deposits and poolWithdraws variable management
         //   @audit-info These three lines are a candidate to be replaced throughout the whole codebase
         val pair =  orderTokenPair(msg.tokenPair)
@@ -28,27 +24,23 @@ module Dex {
         val updatedWithdraws = (withdraws._1 + outAmounts._1, withdraws._2 + outAmounts._2)
         val updatedReserves = (pool.reserves._1 - outAmounts._1, pool.reserves._2 - outAmounts._2)
         val updatedShares = pool.shares - msg.sharesAmount
-
-        val updatedCoinsForCreator = state.coins.get(msg.creator).setBy(
-            pair._1, old => old + outAmounts._1
-        ).setBy(
-            pair._2, old => old + outAmounts._2
-        )
-
-        val updatedPoolSharesForCreator = state.poolShares.get(msg.creator).setBy(
-            poolId, old => old - msg.sharesAmount
-        )
+        
+        val updatedCoinsForCreator = state.coins.get(msg.creator)
+            .setBy(pair._1, old => old + outAmounts._1)
+            .setBy(pair._2, old => old + outAmounts._2)
+        val updatedPoolSharesForCreator = state.poolShares.get(msg.creator)
+            .setBy(poolId, old => old - msg.sharesAmount)
 
         ok({
             pools: state.pools.set(poolId, {reserves: updatedReserves, shares: updatedShares}),
-            // poolWithdraws: state.poolWithdraws.set(msg.creator, state.poolWithdraws.get(msg.creator).set(poolId, updatedWithdraws)),
             poolWithdraws: state.poolWithdraws.setBy(msg.creator, old => old.put(poolId, updatedWithdraws)),
             coins: state.coins.set(msg.creator, updatedCoinsForCreator),
             poolShares: state.poolShares.set(msg.creator, updatedPoolSharesForCreator),
-            ...state})                  
+            ...state
+            })                  
     }
 
-    pure def isTokenBehindEnemyLines(state: State, isPlacingToken0: bool, pair: TokenPair, tick: TickIndex, fee: TickIndex) : bool = 
+    pure def isTokenBehindEnemyLines(state: State, isPlacingToken0: bool, pair: TokenPair, tick: TickIndex, fee: TickIndex): bool = 
         // the tick at which I want to place token0        
         val tickWithFee0 = computeReserveTick(tick, isPlacingToken0, fee)
         // the tick below which there should be no token1 liquidity
@@ -56,14 +48,14 @@ module Dex {
         // if there is a pool with liquidity for the counterparty token (which is token1 since sortedness is assumed)
         // which is crossed by borderTick
         val poolLiquidityBehindEnemyLine = state.pools.keys()
-                .exists(
-                    id => id.tokenPair == pair and
-                    // there is some reserve of token1 in the pool
-                    state.pools.get(id).reserves._2 > 0 and 
-                    // the tick at which the liquidity for the counterparty token is placed
-                    val existingTickWithFee1 = computeReserveTick(id.tick, not(isPlacingToken0), id.fee)                 
-                    borderTick > existingTickWithFee1
-                )
+            .exists(
+                id => id.tokenPair == pair and
+                // there is some reserve of token1 in the pool
+                state.pools.get(id).reserves._2 > 0 and 
+                // the tick at which the liquidity for the counterparty token is placed
+                val existingTickWithFee1 = computeReserveTick(id.tick, not(isPlacingToken0), id.fee)                 
+                borderTick > existingTickWithFee1
+            )
         val tokenToPlace = if (isPlacingToken0) pair._1 else pair._2
         val counterPartyToken = if (isPlacingToken0) pair._2 else pair._1
 
@@ -81,98 +73,82 @@ module Dex {
 
         
 
-    // assume that `pair` is sorted
-    pure def isPoolBehindEnemyLines(state: State, pair: TokenPair, tick: TickIndex, fee: TickIndex) : bool = 
-        isTokenBehindEnemyLines(state, true, pair, tick, fee) 
-        or 
-        isTokenBehindEnemyLines(state, false, pair, tick, fee)
-            
-        
-    
+    // assumes that `pair` is sorted
+    pure def isPoolBehindEnemyLines(state: State, pair: TokenPair, tick: TickIndex, fee: TickIndex): bool = 
+        val token0BEL = isTokenBehindEnemyLines(state, true, pair, tick, fee)         
+        val token1BEL = isTokenBehindEnemyLines(state, false, pair, tick, fee)
+        token0BEL or token1BEL
   
-    pure def deposit(state: State, msg: DepositMsg) : Result = {
+    pure def deposit(state: State, msg: DepositMsg): Result = {
         // first, sorting
         val pair =  orderTokenPair(msg.tokenPair)
         val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-        val tick0To1 = if (pair == msg.tokenPair) msg.tick else -msg.tick
-        
+        val tick0To1 = if (pair == msg.tokenPair) msg.tick else -msg.tick        
 
         // @audit-info Consider not checking this, but disallowing any executions that do not satisfy the property
-        if (isPoolBehindEnemyLines(state, pair, tick0To1, msg.fee))
-            {state: state, error: "Pool behind enemy lines"}
-        else
+        if (isPoolBehindEnemyLines(state, pair, tick0To1, msg.fee)) {state: state, error: "Pool behind enemy lines"} else
+        
+        val poolId = getPoolId(pair, tick0To1, msg.fee)
+        val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
+        val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
+        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+        val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
+        val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
+        val autoswapFee = if (performAutoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
+        val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, tick0To1, autoswapFee)
+        if (outShares == 0 and FORBID_ZERO_SHARES) {state: state, error: "No shares created"} else
 
-            val poolId = getPoolId(pair, tick0To1, msg.fee)
-            val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
-            val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
-            val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
-            val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
-            val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
-            val autoswapFee = if (performAutoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
-            val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, tick0To1, autoswapFee)
+        // updating the pool shares
+        val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
+        val updatedShares = state.poolShares.put(
+            msg.creator,
+            state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
+        )
 
-            if (outShares == 0 and FORBID_ZERO_SHARES) {state: state, error: "No shares created"} else
-
-            // updating the pool shares
-            val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
-            val updatedShares = state.poolShares.put(
-                msg.creator,
-                state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
+        // updating the pools        
+        val updatedPools = state.pools.put(
+            poolId,
+            {
+                reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
+                shares: pool.shares + outShares
+            }
+        )                
+        val oldCreatorsDeposits = state.deposits.getOrElse(msg.creator, Map())
+        val updatedDeposits = state.deposits
+            // first, mark existing deposits in the same pool as having a swap                
+            .keys().mapBy(user => state.deposits.get(user).keys().mapBy(id =>
+                val d = state.deposits.get(user).get(id)
+                if (id == poolId) {swaps: d.swaps or autoswapFee.gt(zero), ...d}
+                else d
+                ) 
+            )
+            // then, set the information about the new deposit
+            // If the new deposit already existed, its swaps field is updated
+            .put(msg.creator,
+                val oldValue = oldCreatorsDeposits.getOrElse(poolId, {amounts: (0,0), swaps: false})                                                
+                oldCreatorsDeposits.put(
+                    poolId,
+                    {amounts: (oldValue.amounts._1 + inAmounts._1, oldValue.amounts._2 + inAmounts._2), 
+                    ...oldValue}
+                )
             )
 
-            // updating the pools        
-            val updatedPools = state.pools.put(
-                poolId,
-                {
-                    reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
-                    shares: pool.shares + outShares
-                }
-            )                
-            
-            val oldCreatorsDeposits = state.deposits.getOrElse(msg.creator, Map())
-            val updatedDeposits = state.deposits
-                // first, mark existing deposits in the same pool as having a swap                
-                .keys().mapBy(user => state.deposits.get(user).keys().mapBy(id =>
-                    val d = state.deposits.get(user).get(id)
-                    if (id == poolId) {swaps: d.swaps or autoswapFee.gt(zero), ...d}
-                    else d
-                    ) 
-                )
-                // then, set the information about the new deposit
-                // If the new deposit already existed, its swaps field is updated
-                .put(msg.creator,
-                    val oldValue = oldCreatorsDeposits.getOrElse(poolId, {amounts: (0,0), swaps: false})                                                
-                    oldCreatorsDeposits.put(
-                        poolId,
-                        {amounts: (oldValue.amounts._1 + inAmounts._1, oldValue.amounts._2 + inAmounts._2), 
-                        ...oldValue}
-                    )
-                )
-            
-            
+        val updatedCreatorCoins = state.coins.get(msg.creator)
+            .setBy(pair._1, old => old - inAmounts._1)
+            .setBy(pair._2, old => old - inAmounts._2)
 
-            val updatedCreatorCoins = state.coins.get(msg.creator).setBy(
-                pair._1, old => old - inAmounts._1
-            ).setBy(
-                pair._2, old => old - inAmounts._2
-            )
-
-            val updatedState = {
-                deposits: updatedDeposits,
-                poolShares: updatedShares,
-                pools: updatedPools,
-                coins: state.coins.set(msg.creator, updatedCreatorCoins),
-                ...state
-                }
-                
-            ok(updatedState)                  
+        val updatedState = {
+            deposits: updatedDeposits,
+            poolShares: updatedShares,
+            pools: updatedPools,
+            coins: state.coins.set(msg.creator, updatedCreatorCoins),
+            ...state
+            }
+            
+        ok(updatedState)                  
     }
-
-
     
-    
-    
-    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg) : Result =        
+    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg): Result =        
         val fulfilledOrderInfo = swap(
             msg.tokenIn, 
             msg.tokenOut,            
@@ -188,65 +164,62 @@ module Dex {
         val remainingAmount = fulfilledOrderInfo.remainingAmount
         val tokenOutReceived = fulfilledOrderInfo.outAmount
 
-        if (remainingAmount > 0 and msg.orderType == FillOrKill)
-            {state: state, error: "FillOrKill: not enough liquidity"}
-        else
-            // 1) update the pools states
-            val updatedPools = updatePools(state.pools, poolsUpdateInfo)
-            // 1a) update the book-keeping of which pools were traded through
-            val updatedDeposits = state.deposits.keys().mapBy(
-                user => state.deposits.get(user).keys().mapBy(
-                    poolId => 
-                    val d = state.deposits.get(user).get(poolId)
-                    if (poolId.in(poolsUpdateInfo.keys())) 
-                        {swaps: true, ...d}
-                    else
-                        d
-                )
-            )
-            
-            // 2) update the tranches states
-            val tradeUpdatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, tranchesUpdateInfo)
-            // 2a) handle the remaining amount and update tranches accordingly
-            val tranchesSharesUpdate = 
-                // no new updates to tranches if the type is ImmediateOrCancel, or 
-                // if the remaining amounot is 0
-                if (msg.orderType == ImmediateOrCancel or remainingAmount == 0) 
-                    {tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares}
-                else //if there is something to be placed
-                    val expirationBlock = match msg.orderType {
-                        | GoodTillTime(block_time) => block_time
-                        | JustInTime => state.blockNumber + 1
-                        | GoodTillCancelled => -1 
-                        | _ => -2 // unreachable
-                    }
-                    placeRemainingLimitOrderAmount(tradeUpdatedTranches, state.tranchesShares, msg, remainingAmount, expirationBlock)
-
-            
-            val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
-            // 3) update the user's balance
-            val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
-                token => 
-                if (token == msg.tokenOut)
-                    state.coins.get(msg.creator).get(token) + tokenOutReceived
-                else if (token == msg.tokenIn)
-                    state.coins.get(msg.creator).get(token) - tokenInSpent
+        if (remainingAmount > 0 and msg.orderType == FillOrKill) {state: state, error: "FillOrKill: not enough liquidity"} else
+     
+        // 1) update the pools states
+        val updatedPools = updatePools(state.pools, poolsUpdateInfo)
+        // 1a) update the book-keeping of which pools were traded through
+        val updatedDeposits = state.deposits.keys().mapBy(
+            user => state.deposits.get(user).keys().mapBy(
+                poolId => 
+                val d = state.deposits.get(user).get(poolId)
+                if (poolId.in(poolsUpdateInfo.keys())) 
+                    {swaps: true, ...d}
                 else
-                    state.coins.get(msg.creator).get(token)                
+                    d
             )
+        )
+        
+        // 2) update the tranches states
+        val tradeUpdatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, tranchesUpdateInfo)
+        // 2a) handle the remaining amount and update tranches accordingly
+        val tranchesSharesUpdate = 
+            // no new updates to tranches if the type is ImmediateOrCancel, or 
+            // if the remaining amounot is 0
+            if (msg.orderType == ImmediateOrCancel or remainingAmount == 0) 
+                {tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares}
+            else //if there is something to be placed
+                val expirationBlock = match msg.orderType {
+                    | GoodTillTime(block_time) => block_time
+                    | JustInTime => state.blockNumber + 1
+                    | GoodTillCancelled => -1 
+                    | _ => -2 // unreachable
+                }
+                placeRemainingLimitOrderAmount(tradeUpdatedTranches, state.tranchesShares, msg, remainingAmount, expirationBlock)
+        
+        val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
+        // 3) update the user's balance
+        val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
+            token => 
+            if (token == msg.tokenOut)
+                state.coins.get(msg.creator).get(token) + tokenOutReceived
+            else if (token == msg.tokenIn)
+                state.coins.get(msg.creator).get(token) - tokenInSpent
+            else
+                state.coins.get(msg.creator).get(token)                
+        )
 
-
-            val new_state = {
-                tranches: tranchesSharesUpdate.tranches,
-                tranchesShares: tranchesSharesUpdate.tranchesShares,
-                pools: updatedPools,
-                coins: state.coins.set(msg.creator, updatedUserCoins),
-                deposits: updatedDeposits,
-                ...state
-            }
-            ok(new_state)
+        val new_state = {
+            tranches: tranchesSharesUpdate.tranches,
+            tranchesShares: tranchesSharesUpdate.tranchesShares,
+            pools: updatedPools,
+            coins: state.coins.set(msg.creator, updatedUserCoins),
+            deposits: updatedDeposits,
+            ...state
+        }
+        ok(new_state)
     
-    pure def singlehopSwap(state: State, msg: SwapMsg) : Result = {
+    pure def singlehopSwap(state: State, msg: SwapMsg): Result = {
       val inAmount = msg.amount
       val fulfilledOrderInfo = swap(
             msg.tokenPair._1,
@@ -274,10 +247,9 @@ module Dex {
         val updatedTranches = updateTranches(state.tranches, tranchesUpdateInfo)
 
         // 4) update the user's deposits (helper variable)
-        val updatedDeposits = CREATORS.fold(
-        state.deposits, 
-        (acc, user) => 
-            acc.set(user, updateSwapsBool(msg.creator, poolsUpdateInfo.keys(),state.deposits.get(user),state.poolShares.get(user)))
+        val updatedDeposits = CREATORS.fold(state.deposits, (acc, user) => 
+            val updatedSwapField = updateSwapsBool(msg.creator, poolsUpdateInfo.keys(),state.deposits.get(user),state.poolShares.get(user))
+            acc.set(user, updatedSwapField)
         )                                                
 
         val updatedState = {
@@ -291,7 +263,7 @@ module Dex {
         ok(updatedState)
     }
 
-    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg) : Result =
+    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg): Result =
         val tranche = state.tranches.get(msg.trancheKey)
         val usersTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)        
         val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
@@ -317,8 +289,7 @@ module Dex {
         }
         ok(updatedState)
 
-
-    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg) : Result =
+    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg): Result =
         // 1) update the user's tranchesShares record
         val updatedUsersTranches = 
             state.tranchesShares.get(msg.creator).keys().fold(
@@ -349,7 +320,6 @@ module Dex {
             totalTaker: tranche.totalTaker - withdrawAmountTakerToken,
             ...tranche
         }
-        
 
         // updated state
         val updatedState =
@@ -366,20 +336,18 @@ module Dex {
         }
         ok(updatedState)
     
-
-    pure def advanceBlocks(state: State, numBlocks: int) : Result = {
+    pure def advanceBlocks(state: State, numBlocks: int): Result = {
         val newBlock = state.blockNumber + numBlocks
-        val updatedTranches = state.tranches.keys().mapBy(
-            k =>
+        val updatedTranches = state.tranches.keys()
+            .mapBy(k =>
                 val tranche = state.tranches.get(k) 
                 if (tranche.mayExpire() and tranche.expirationTime < newBlock)
                     {isActive: false, ...state.tranches.get(k)}
                   else
                     state.tranches.get(k)
-        )
+            )
         
         val updatedState = {blockNumber: newBlock, tranches: updatedTranches, ...state}
         ok(updatedState)
     }
-
 }

@@ -40,10 +40,7 @@ module dexEvolution {
         singlehopSwapAction
     }
 
-    
-
     // ACTIONS
-
     action withdrawPoolAction: bool = all {
         // mapping from creators to sets of pools in which they have >0 share
         val relevantCreatorsAndPools = state.poolShares.keys().fold(
@@ -75,27 +72,7 @@ module dexEvolution {
                 actionTaken' = {name: "withdraw", message: WithdrawPoolSubType(msg)}
             }
         }
-    }
-    
-    pure def depMsg(amountA: int, amountB: int, auto: bool, tick: int): DepositMsg = 
-        {
-            creator: "Alice",
-            tokenPair: ("A", "B"),
-            amountPair: (amountA, amountB),
-            tick: tick,
-            fee: 5,
-            autoswap: auto
-        }
-    
-    action dep(amountA: int, amountB: int, auto: bool, tick: int): bool = 
-        val msg = depMsg(amountA, amountB, auto, tick)
-        val result = deposit(state, msg)
-        all {
-            actionSuccess' = result.error == "nil",
-            state' = result.state,
-            postconditionOK' = depositPostcondition(state, result.state, msg),
-            actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
-        }
+    }        
 
     action depositAction: bool = 
         nondet doAutoswap = oneOf(Set(true, false))
@@ -121,7 +98,6 @@ module dexEvolution {
         val c = creatorAndPair.creator        
         nondet fee = oneOf(0.to(MAX_FEE))
         nondet tick = oneOf(TICKS)
-
         nondet amountTokenX = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
         nondet amountTokenY = oneOf(0.to(state.coins.get(c).get(tokenPair._2)))
         // we want to let simulation more often go with single-sided deposits (because they are more common, and more likely not to
@@ -151,8 +127,6 @@ module dexEvolution {
             postconditionOK' = if (success) depositPostcondition(state, result.state, msg) else true,
             actionTaken' = {name: "deposit", message: DepositPoolSubType(msg)}
         }
-    
-
 
     action placeLimitOrderAction: bool = 
         nondet c = oneOf(CREATORS)
@@ -192,9 +166,6 @@ module dexEvolution {
             actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
             actionSuccess' = res.error == "nil"
         }     
-
-
-    
     
     action singlehopSwapAction: bool = all {
         require(state.pools.keys().size() > 0),
@@ -223,38 +194,35 @@ module dexEvolution {
         }
     }
 
-
-action withdrawLimitOrderAction: bool = 
-    val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
-    all {
-        require(size(creatorKeyTuples) > 0),
-        nondet chosenTuple = oneOf(creatorKeyTuples)
-        val creator = chosenTuple._1
-        val trancheKey = chosenTuple._2
-        val withdrawLimitOrderMsg = {
-            creator: creator,
-            trancheKey: trancheKey
-        }
-        val res = withdrawLimitOrder(state, withdrawLimitOrderMsg)
+    action withdrawLimitOrderAction: bool = 
+        val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
         all {
-            require(state.tranches.keys().contains(trancheKey)),
-            // we are not allowing  withdrawing from fresh tranches (there was no trading)
-            // @audit-info Should we handle the error at this level or should we let individual functions handle it?
-            // This way is cleaner. The problem is that the simulation will not try at all then those cases where a withdraw on a non-fresh
-            // tranche is attempted.
-            // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
-            require(not(state.tranches.get(trancheKey).isFresh)),
-            state' = res.state,
-            postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res.state),
-            actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)},
-            actionSuccess' = res.error == "nil"
+            require(size(creatorKeyTuples) > 0),
+            nondet chosenTuple = oneOf(creatorKeyTuples)
+            val creator = chosenTuple._1
+            val trancheKey = chosenTuple._2
+            val withdrawLimitOrderMsg = {
+                creator: creator,
+                trancheKey: trancheKey
+            }
+            val res = withdrawLimitOrder(state, withdrawLimitOrderMsg)
+            all {
+                require(state.tranches.keys().contains(trancheKey)),
+                // we are not allowing  withdrawing from fresh tranches (there was no trading)
+                // @audit-info Should we handle the error at this level or should we let individual functions handle it?
+                // This way is cleaner. The problem is that the simulation will not try at all then those cases where a withdraw on a non-fresh
+                // tranche is attempted.
+                // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
+                require(not(state.tranches.get(trancheKey).isFresh)),
+                state' = res.state,
+                postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res.state),
+                actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)},
+                actionSuccess' = res.error == "nil"
+            }
         }
-    }
-
-    
 
     action cancelLimitOrderAction: bool = 
-    // only those addresses that have some tranches can cancel them
+        // only those addresses that have some tranches can cancel them
         val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
         all{        
             require(size(creatorKeyTuples) > 0),
@@ -295,8 +263,6 @@ action withdrawLimitOrderAction: bool =
             actionSuccess' = true
         }        
 
-
-
 // INVARIANTS
     // Invariant: postconditions always hold
     val postconditions = postconditionOK
@@ -318,30 +284,31 @@ action withdrawLimitOrderAction: bool =
     
     // Invariant: LP profit from their deposits
     // simplified LP.5 in specification invariants
-    val profitDeposit =
-      CREATORS.forall(
+    val profitDeposit = CREATORS.forall(
         creator => state.deposits.get(creator).keys().forall(poolId => 
+            // If the user has withdrawn all their shares
             if (state.poolShares.get(creator).get(poolId) == 0)
                 val deposited = state.deposits.get(creator).getOrElse(poolId, {amounts: (0,0), swaps: false})
                 val withdrawnAmounts = state.poolWithdraws.get(creator).getOrElse(poolId, (0,0))                                
+                // If there were swaps, the user withdrew more value than deposited
                 if (deposited.swaps) approx_gt(                    
                     computeDepositValue(withdrawnAmounts, poolId.tick),
                     computeDepositValue(deposited.amounts, poolId.tick),
                     fromInt(TOLERANCE)
-                )                    
+                )                  
+                // Otherwise, the user withdrew no less value than deposited  
                 else approxEqualDec(
                     computeDepositValue(withdrawnAmounts, poolId.tick), 
                     computeDepositValue(deposited.amounts, poolId.tick), 
                     fromInt(TOLERANCE)
                     )
+            // This is the case in which the user did not withdraw all the shares so we are not claiming anything here
             else true
-            )
-            
+            )            
         )
 
     // Invariant: Tranche expiration times always >= -1 (sanity check)
     val expirationTimeSanity = 
         state.tranches.keys().forall(k => state.tranches.get(k).expirationTime >= -1)
-
 
     }
