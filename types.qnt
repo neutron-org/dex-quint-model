@@ -51,14 +51,14 @@ module types {
             tokenPair: (Token, Token),
             amountPair: (int, int),
             tick: TickIndex,
-            fee: Fee,
+            fee: TickIndex,
             autoswap: bool
         }
 
     type WithdrawPoolMsg = {
             creator: Addr,
             tokenPair: (Token, Token),
-            amount: int,
+            sharesAmount: int,
             tick: TickIndex,
             fee: Fee,
         }
@@ -179,8 +179,10 @@ module types {
         blockNumber: BlockTime,       
 
         // helper state variables, to be used in invariants
+        // total deposits, not to be updated as withdraws happen
+        // @audit-info The `swaps` variable is a candidate to be moved into its own separate variable
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
-        poolWithdrawns: Addr -> PoolId -> (int, int)
+        poolWithdraws: Addr -> PoolId -> (int, int)
     }
 
     type Result = {state: State, error: str}

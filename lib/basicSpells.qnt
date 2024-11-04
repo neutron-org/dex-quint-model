@@ -132,4 +132,8 @@ module basicSpells {
     assert(Map(2 -> 3, 4 -> 5).mapSafeSet(1, 7) == Map(1 -> 7, 2 -> 3, 4 -> 5)),
     assert(Map(2 -> 3, 4 -> 5).mapSafeSet(2, 7) == Map(2 -> 7, 4 -> 5))
   }
+
+
+  pure def approxEqual(a: int, b: int, tolerance: int): bool =
+    abs(a - b) <= tolerance
 }
