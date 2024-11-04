@@ -35,13 +35,13 @@ module dexEvolution {
         cancelLimitOrderAction,
         withdrawLimitOrderAction,
         advanceTimeAction,
-        withdrawPoolAction,
+        withdrawPoolAction(assignResult),
         depositAction,
         singlehopSwapAction
     }
 
     // ACTIONS
-    action withdrawPoolAction: bool = all {
+    action withdrawPoolAction(processResult: (Result, Message) => bool): bool = all {
         // mapping from creators to sets of pools in which they have >0 share
         val relevantCreatorsAndPools = state.poolShares.keys().fold(
             Map(), // a map from creators to pools in which they have non-trivial stake
@@ -65,16 +65,42 @@ module dexEvolution {
                 fee: poolKey.fee
             }
             val result = withdrawPool(state, msg)
-            all {        
-                actionSuccess' = result.error == "nil",
-                state' = result.state,
-                postconditionOK' = withdrawPoolPostcondition(state, result.state, msg),
-                actionTaken' = {name: "withdraw", message: WithdrawPoolSubType(msg)}
-            }
+            processResult(result, WithdrawPoolSubType(msg))
         }
-    }        
+    }
 
-    action depositAction: bool = 
+    action assignResult(result: Result, msg: Message): bool = all {
+        actionSuccess' = result.error == "nil",
+        state' = result.state,
+        postconditionOK' = postconditionForMessage(state, result.state, msg),
+        actionTaken' = { name: actionForMessage(msg), message: msg }
+    }
+
+    pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
+      match message {
+        | DepositPoolSubType(msg) => depositPostcondition(before, after, msg)
+        | PlaceLimitOrderSubType(msg) => placeLimitOrderPostcondition(before, after, msg)
+        | CancelLimitOrderSubType(msg) => cancelLimitOrderPostcondition(before, after, msg)
+        | WithdrawLimitOrderSubType(msg) => withdrawLimitOrderPostcondition(before, after, msg)
+        | WithdrawPoolSubType(msg) => withdrawPoolPostcondition(before, after, msg)
+        | SwapSubType(msg) => singlehopSwapPostcondition(before, after, msg)
+        | _ => true
+      }
+    }
+
+    pure def actionForMessage(msg: Message): str = {
+      match msg {
+        | DepositPoolSubType(_) => "deposit"
+        | PlaceLimitOrderSubType(_) => "placeLimitOrder"
+        | CancelLimitOrderSubType(_) => "cancelLimitOrder"
+        | WithdrawLimitOrderSubType(_) => "withdrawLimitOrder"
+        | WithdrawPoolSubType(_) => "withdrawPool"
+        | SwapSubType(_) => "swap"
+        | _ => "unknown"
+      }
+    }
+
+    action depositAction: bool =
         nondet doAutoswap = oneOf(Set(true, false))
         // a set of {creator: Addr, poolKey: PoolKey} records containing all the pools whose tokens are 
         // the ones of which the creator has >0 coins. We do so by iterating first over creators, and then
@@ -161,7 +187,7 @@ module dexEvolution {
             // @audit-info TODO: this check is until Postcondition is updated to support different types
             postconditionOK' = 
             if (limitOrderMsg.orderType == GoodTillCancelled ) 
-                placeLimitOrderPostcondition(state, limitOrderMsg, res.state)
+                placeLimitOrderPostcondition(state, res.state, limitOrderMsg)
             else true,
             actionTaken' = {name: "placeLimitOrder", message: PlaceLimitOrderSubType(limitOrderMsg)},
             actionSuccess' = res.error == "nil"
@@ -215,7 +241,7 @@ module dexEvolution {
                 // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
                 require(not(state.tranches.get(trancheKey).isFresh)),
                 state' = res.state,
-                postconditionOK' = withdrawLimitOrderPostcondition(state, withdrawLimitOrderMsg, res.state),
+                postconditionOK' = withdrawLimitOrderPostcondition(state, res.state, withdrawLimitOrderMsg),
                 actionTaken' = {name: "withdrawLimitOrder", message: WithdrawLimitOrderSubType(withdrawLimitOrderMsg)},
                 actionSuccess' = res.error == "nil"
             }
@@ -237,7 +263,7 @@ module dexEvolution {
             val res = cancelLimitOrder(state, cancelLimitOrderMsg)
             all{
                 state' = res.state,
-                postconditionOK' = cancelLimitOrderPostcondition(state, cancelLimitOrderMsg, res.state),
+                postconditionOK' = cancelLimitOrderPostcondition(state, res.state, cancelLimitOrderMsg),
                 actionTaken' = {name: "cancelLimitOrder", message: CancelLimitOrderSubType(cancelLimitOrderMsg)},
                 actionSuccess' = res.error == "nil"
             }
