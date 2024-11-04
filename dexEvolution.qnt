@@ -24,7 +24,7 @@ module dexEvolution {
         base::withdrawPoolAction(assignResult),
         base::depositAction(assignResult),
         base::singlehopSwapAction(assignResult),
-        advanceTimeAction,
+        base::advanceTimeAction(assignResult),
     }
 
     action assignResult(result: Result, msg: Message): bool = all {
@@ -46,21 +46,7 @@ module dexEvolution {
       }
     }
 
-      action advanceTimeAction: bool =
-        all {
-            // separating the two (even though they could be combined) to
-            // be able to explicitly turn off one of them
-            any {
-                base::advanceSingleBlockAction,
-                base::advanceMultipleBlocksAction
-            },
-            postconditionOK' = postconditionOK,
-            actionTaken' = AdvanceTime,
-            actionSuccess' = true
-        }        
-
     // INVARIANTS
     // Invariant: postconditions always hold
     val postconditions = postconditionOK
-
 }

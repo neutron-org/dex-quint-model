@@ -13,15 +13,7 @@ module baseDexEvolution {
 
     // STATE MACHINE
     action init = all {
-        // @audit-issue This should be the correct spec, but replaced by a simpler, hard-coded one due to
-        // a problem in the simulator: https://github.com/informalsystems/quint/issues/1530
-        // val possibleTokenAccounts = setOfMaps(CREATORS, setOfMaps(TOKENS, INITIAL_CREATORS_BALANCES))
-        // nondet initCoins = oneOf(possibleTokenAccounts)
-        val bal = INITIAL_CREATOR_BALANCE_TEMP
-        val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, TOKENS.fold(
-            Map(), (acc2, t) => acc2.put(t, bal)
-        )))
-        state' = initState(initCoins),
+        state' = initState,
     }
 
     action step: bool = any {
@@ -31,7 +23,7 @@ module baseDexEvolution {
         withdrawPoolAction(assignResult),
         depositAction(assignResult),
         singlehopSwapAction(assignResult),
-        advanceTimeAction,
+        advanceTimeAction(assignResult),
     }
 
     action assignResult(result: Result, msg: Message): bool =
@@ -217,21 +209,19 @@ module baseDexEvolution {
             processResult(result, CancelLimitOrder(msg))
         }
 
-    action advanceSingleBlockAction: bool =
-        state' = advanceBlocks(state, 1).state
+    action advanceSingleBlockAction(processResult: (Result, Message) => bool): bool =
+        processResult(advanceBlocks(state, 1), AdvanceTime)
 
-    action advanceMultipleBlocksAction: bool =
+    action advanceMultipleBlocksAction(processResult: (Result, Message) => bool): bool =
         nondet timestep = oneOf(1.to(MAX_FUTURE_BLOCKS))
-        state' = advanceBlocks(state, timestep).state
+        processResult(advanceBlocks(state, timestep), AdvanceTime)
 
-    action advanceTimeAction: bool =
-        all{
-            // separating the two (even though they could be combined) to
-            // be able to explicitly turn off one of them
-            any {
-                advanceSingleBlockAction,
-                advanceMultipleBlocksAction
-            }
+    action advanceTimeAction(processResult: (Result, Message) => bool): bool =
+        // separating the two (even though they could be combined) to
+        // be able to explicitly turn off one of them
+        any {
+            advanceSingleBlockAction(processResult),
+            advanceMultipleBlocksAction(processResult)
         }
 
     // INVARIANTS
