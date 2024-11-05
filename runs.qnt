@@ -6,29 +6,22 @@ module runs {
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
-    import dexEvolution.* from "dexEvolution"
+    import baseDexEvolution.* from "baseDexEvolution"
     import postconditions.* from "postconditions"
     import runsUtils.* from "runsUtils"
 
-    action runInit =
-        val bal = INITIAL_CREATOR_BALANCE_TEMP
-        val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, TOKENS.fold(
-            Map(), (acc2, t) => acc2.put(t, bal)
-        )))        
-        state' = initState(initCoins)
-    
-    run test = 
+    run test =
         val poolKey1 =  {fee: 10, tick: -23027, tokenPair: ("A", "B")}    
         val poolKey2 =  {fee: 10, tick: -200, tokenPair: ("A", "B")}    
         val msg: DepositMsg = depositMsgPool("Bob", poolKey1, (200, 0), true)
         val msg2 = depositMsgPool("Carol", poolKey2, (200,0), true)
-        runInit
+        init
         .then(state' = deposit(state, msg).state)
         .then(state' = deposit(state, msg).state)
 
     run depositLimitInteraction = 
         val poolKey = {fee: 39, tick: -130, tokenPair: ("A", "B")}
-        runInit
+        init
         .then(
             val msg = depositMsgPool("Bob", poolKey, (0, 6071), true)
             val res = deposit(state, msg)
@@ -60,7 +53,7 @@ module runs {
     run swapExample_run =
         val poolKey = {fee: 10, tick: -23027, tokenPair: ("A", "B")}    
         val trancheKey = {id: 1, makerToken: "A", takerToken: "B", tick: 23037}        
-        runInit 
+        init
         .then(
             val msg: PlaceLimitOrderMsg = {
                 creator: "Alice",
@@ -122,7 +115,7 @@ module runs {
 
     run behindTrancheEnemyLines_run =
         val creator = DEFAULT_CREATOR        
-        runInit
+        init
         .then(
             val order: PlaceLimitOrderMsg = {
                 creator: creator,
@@ -158,7 +151,7 @@ module runs {
 
     run behindPoolEnemyLine_run = 
         val creator = DEFAULT_CREATOR
-        runInit
+        init
         .then(
             val key1: PoolId = {fee: 5, tick: -100, tokenPair: ("A", "B")}
             val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
@@ -190,7 +183,7 @@ module runs {
     
 
     run limitOrderTrade_run = 
-        runInit
+        init
         .then(
             val bobsOrder: PlaceLimitOrderMsg = {
                 creator: "Bob",

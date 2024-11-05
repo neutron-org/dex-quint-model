@@ -101,7 +101,7 @@ module postconditions {
             // else true
         }
 
- pure def placeLimitOrderPostcondition(before: State, msg: PlaceLimitOrderMsg, after: State): bool =
+ pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =
         val fulfilledOrderInfo = swap(
             msg.tokenIn,
             msg.tokenOut,
@@ -212,7 +212,7 @@ module postconditions {
             )
         }
 
-    pure def withdrawLimitOrderPostcondition(before: State, msg: WithdrawLimitOrderMsg, after: State): bool = 
+    pure def withdrawLimitOrderPostcondition(before: State, after: State, msg: WithdrawLimitOrderMsg): bool =
         val tranche = before.tranches.get(msg.trancheKey)
         val usersTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
         val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
@@ -237,7 +237,7 @@ module postconditions {
             // ** Invariants ** 
         }  
 
-    pure def cancelLimitOrderPostcondition(before: State, msg: CancelLimitOrderMsg, after: State): bool =                
+    pure def cancelLimitOrderPostcondition(before: State, after: State, msg: CancelLimitOrderMsg): bool =
         val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
         val users_tranches_shares_before = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
         val users_tranches_before = before.tranchesShares.get(msg.creator).keys()
