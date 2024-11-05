@@ -69,6 +69,15 @@ module dec {
             b
         )
 
+    // Evaluates to true if a+epsilon is greater than or equal to b (allows for a to even be smaller than b).
+    //  assumes epsilon > 0
+    pure def approx_gte(a: Dec, b: Dec, epsilon: Dec): bool =
+        gte(
+            a.add(epsilon),
+            b
+        )
+
+
     pure def approxEqualDec(a: Dec, b: Dec, epsilon: Dec): bool =
     // assumes epsilon > 0
         gt(

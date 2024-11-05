@@ -1,6 +1,8 @@
 // -*- mode: Bluespec; -*-
 module dexEvolution {
     import types.* from "types"
+    import utils.* from "utils"
+    import dec from "lib/dec"
     import postconditions.* from "postconditions"
     import baseDexEvolution as base from "baseDexEvolution"
 
@@ -36,13 +38,31 @@ module dexEvolution {
 
     pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
       match message {
-        | DepositPool(msg) => depositPostcondition(before, after, msg)
-        | PlaceLimitOrder(msg) => placeLimitOrderPostcondition(before, after, msg)
+        | DepositPool(msg) => depositPostcondition(before, after, msg) and nonDecreasingPools(before, after, msg.tokenPair)
+        | PlaceLimitOrder(msg) => placeLimitOrderPostcondition(before, after, msg) and nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut))
         | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
         | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
         | WithdrawPool(msg) => withdrawPoolPostcondition(before, after, msg)
-        | Swap(msg) => singlehopSwapPostcondition(before, after, msg)
+        | Swap(msg) => singlehopSwapPostcondition(before, after, msg) and nonDecreasingPools(before, after, msg.tokenPair)
         | _ => true
+      }
+    }
+
+    pure def nonDecreasingPools(before: State, after: State, tokenPair: TokenPair): bool = {
+      pure def relevantPoolIdsBefore = before.pools.keys().filter(p => p.tokenPair == tokenPair)
+      pure def relevantPoolIdsAfter = after.pools.keys().filter(p => p.tokenPair == tokenPair)
+
+      and {
+        relevantPoolIdsBefore.subseteq(relevantPoolIdsAfter),
+        // Question: can the pool value be negative?
+        // If so, we need to consider the ones that exist after but didn't before
+        relevantPoolIdsBefore.forall(p => {
+          dec::approx_gte(
+            computePoolValue(after.pools.get(p).reserves, p.tick),
+            computePoolValue(before.pools.get(p).reserves, p.tick),
+            dec::one
+          )
+        })
       }
     }
 
