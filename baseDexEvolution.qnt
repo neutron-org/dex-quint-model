@@ -222,7 +222,7 @@ module baseDexEvolution {
     // INVARIANTS
 
     // Invariant: pool reserves are always greater or equal to zero
-    val nonNegativeReserves = state.pools.keys().forall(poolId => 
+    val nonNegativePoolReserves = state.pools.keys().forall(poolId => 
         val reserves = state.pools.get(poolId).reserves
         reserves._1 >= 0 and reserves._2 >= 0
         )
@@ -230,13 +230,25 @@ module baseDexEvolution {
     // Invariant: shares supplies are always greater or equal to zero
     val nonNegativeSharesSupply = state.pools.keys().forall(poolId => state.pools.get(poolId).shares >= 0)
 
-    // Invariant: coin and share balances are zero or greater
+    // Sanity: coin, share balances are zero or greater
     val nonNegativeBalances = CREATORS.forall(creator => 
         val coins = state.coins.getOrElse(creator, Map())
         val shares = state.poolShares.getOrElse(creator, Map())
         coins.keys().forall(token => coins.get(token) >= 0) 
         and
         shares.keys().forall(share => shares.get(share) >= 0)
+        )
+
+    // Sanity: All reserves are 0 or greater
+    val nonNegativeTrancheAmounts = state.tranches.keys().forall(trancheKey =>
+        val tranche = state.tranches.get(trancheKey)
+        and{
+            tranche.reservesMaker + TOLERANCE >= 0,
+            tranche.reservesTaker + TOLERANCE >= 0,
+            tranche.totalMaker + TOLERANCE >= 0,
+            tranche.totalTaker + TOLERANCE >= 0
+        }
+        
         )
 
     // Invariant: LP profit from their deposits
@@ -269,6 +281,7 @@ module baseDexEvolution {
         state.tranches.keys().forall(k => state.tranches.get(k).expirationTime >= -1)
 
     // totalMaker for a tranche equals the sum of all sharesOwned by the users
+    // Corresponds to MLO 1.b (https://www.notion.so/hadron/Dex-Formal-Verification-Spec-c13256ab54cd4d82a6ab09a88863e52b?pvs=4#54262c72a8de483e99030074e8f02768)
     val totalMakerInvariant = state.tranches.keys().forall(
        trancheKey =>
             val totalMaker = state.tranches.get(trancheKey).totalMaker

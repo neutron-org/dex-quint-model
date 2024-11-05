@@ -329,6 +329,7 @@ module utils {
             {
                 reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
                 reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                totalTaker: before.tranches.get(trancheKey).totalTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
                 isFresh: false,
                 ...before.tranches.get(trancheKey),
             }
@@ -352,6 +353,7 @@ module utils {
                 {
                     reservesMaker: tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
                     reservesTaker: tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                    totalTaker: tranches.get(trancheKey).totalTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
                     isFresh: false,
                     ...tranches.get(trancheKey)
                 }
