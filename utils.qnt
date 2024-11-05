@@ -379,8 +379,9 @@ module utils {
         // now it is reversed: the remaining amount of the tokenIn becomes a maker token of a new tranche
         val makerToken = msg.tokenIn
         // and the tokenOut, the one that the creator wants to receive, becomes the taker token
-        val takerToken = msg.tokenOut
-        val tick = msg.tick
+        val takerToken = msg.tokenOut        
+        // this will be the tick of the new tranche, in which we put the tokenIn as the maker token
+        val tick = -msg.tick
         val creator = msg.creator
         
         val trancheKey = calculateTrancheKey(makerToken, takerToken, tick, tranches, expirationBlockTime)                      
@@ -506,7 +507,12 @@ module utils {
         val withdrawAmountInTakerToken = intDivDec(withdrawAmountInMakerToken, priceFromTick(tranche.tick)).truncate()
 
         {taker_token: withdrawAmountInTakerToken, shares: withdrawAmountInMakerToken}
-
+    
+    // A function to compute the amount in a different way, corresponding to MLO 1.e
+    // https://www.notion.so/hadron/Dex-Formal-Verification-Spec-c13256ab54cd4d82a6ab09a88863e52b?pvs=4#95dd3f39f49c4b0c928fc14a2e7ec303
+    // pure def computeWithdrawAmountTakerTokenCheck(tranche: Tranche, userShares: UsersTrancheShares): {taker_token: int, shares: int} = 
+    //     val proRataShare = fromRatio(userShares.sharesOwned, tranche.totalMaker)
+    //     val priceTakerToMaker = priceFromTick(tranche.tick)
     // WITHDRAW POOL RELATED FUNCTIONS
 
     // Assumes that totalShares > 0, which is checked by the invariants

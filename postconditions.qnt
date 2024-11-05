@@ -101,7 +101,7 @@ module postconditions {
             // else true
         }
 
- pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =
+ pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =                
         val fulfilledOrderInfo = swap(
             msg.tokenIn,
             msg.tokenOut,
@@ -140,7 +140,8 @@ module postconditions {
                     | JustInTime => before.blockNumber + 1
                     | _ => -1
                 }
-                val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.tick, before.tranches, blockExpirationTime)                
+                val new_tick = -msg.tick
+                val trancheKey = calculateTrancheKey(makerToken, takerToken, new_tick, before.tranches, blockExpirationTime)                
                 and{            
                     // user should have received the correct amount
                     outAmount + userGotRest == userDiffOut,
