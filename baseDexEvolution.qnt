@@ -137,12 +137,7 @@ module baseDexEvolution {
         all {
             require(msg.amountIn > 0),
             val result = placeLimitOrder(state, msg)
-            processResult(result, PlaceLimitOrder(msg))
-            // @audit-info TODO: this check is until Postcondition is updated to support different types
-            // postconditionOK' =
-            // if (limitOrderMsg.orderType == GoodTillCancelled )
-            //     placeLimitOrderPostcondition(state, res.state, limitOrderMsg)
-            // else true,
+            processResult(result, PlaceLimitOrder(msg))            
         }
 
     action singlehopSwapAction(processResult: (Result, Message) => bool): bool = all {
