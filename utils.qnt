@@ -81,7 +81,7 @@ module utils {
 
     pure def computePoolValue(reserves: (int, int), token0SellTick: int): Dec =         
         val token0SellPrice = priceFromTick(token0SellTick)
-        fromInt(reserves._1).add(mulInt(token0SellPrice, reserves._2))
+        fromInt(reserves._1).add(intDivDec(reserves._2, token0SellPrice))
 
     pure def computeDepositValue(amounts: (int, int), token0SellTick: int): Dec = computePoolValue(amounts, token0SellTick)
 
@@ -529,7 +529,7 @@ module utils {
 
         val percentFilled = calculatePercentFilled(tranche)
         val withdrawAmountInMakerToken = percentFilled.mulInt(userShares.sharesOwned).truncate() - userShares.sharesWithdrawn                
-        val withdrawAmountInTakerToken = intDivDec(withdrawAmountInMakerToken, priceFromTick(tranche.sellTick)).truncate()
+        val withdrawAmountInTakerToken = mulInt(priceFromTick(tranche.sellTick), withdrawAmountInMakerToken).truncate()
 
         {taker_token: withdrawAmountInTakerToken, shares: withdrawAmountInMakerToken}
     
