@@ -12,7 +12,7 @@ module types {
     type TrancheKey = {
         makerToken: Token,
         takerToken: Token,
-        tick: TickIndex,
+        sellTick: TickIndex,
         id: TrancheIndex
     }
 
@@ -41,12 +41,12 @@ module types {
 
     //@audit-info : Simplified to only allow deposit in a single position
     type DepositMsg = {
-            creator: Addr,
-            tokenPair: (Token, Token),
-            amountPair: (int, int),
-            tick: TickIndex,
-            fee: TickIndex,
-            autoswap: bool
+        creator: Addr,
+        tokenPair: (Token, Token),
+        amountPair: (int, int),
+        token0SellTick: TickIndex,
+        fee: TickIndex,
+        autoswap: bool
         }
 
     type WithdrawPoolMsg = {
@@ -69,7 +69,8 @@ module types {
             orderType: LimitOrderType,            
             // we have to choose tickIndex because the log operation is missing
             // @audit-info : If we will really need the log operation, what are our Quint options?
-            tick: TickIndex, 
+            // semantics: 1 tokenIn = price(sellTick) * 1 tokenOut
+            sellTick: TickIndex, 
             // semantics: I want to exchange tokenIn for tokenOut
             tokenIn: Token,
             tokenOut: Token,
@@ -115,7 +116,7 @@ module types {
             totalMaker: int,
             totalTaker: int,
             // working directly with the tick instead of the `PriceTakerToMaker`
-            tick: int,
+            sellTick: int,
             expirationTime: BlockTime,
             trancheKey: TrancheKey,
             // @audit-issue This is saved in the code under TrancheUser. Is there a good reason
@@ -127,6 +128,7 @@ module types {
     
     type PoolId = {
         tokenPair: (Token, Token),
+        // Pool's tick is the token0 sell tick, that is: 1 Token0 = price(tick)* 1 Token1
         tick: TickIndex,
         fee: Fee
     }

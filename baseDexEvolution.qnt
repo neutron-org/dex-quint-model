@@ -98,7 +98,7 @@ module baseDexEvolution {
             tokenPair: tokenPair,
             amountPair: providedAmounts,
             fee: fee,
-            tick: tick,
+            token0SellTick: tick,
             autoswap: doAutoswap
         }
 
@@ -124,10 +124,10 @@ module baseDexEvolution {
         nondet amount = oneOf(possibleAmounts)
         // @audit-info not implemented for now, so using a trivial value
         val maxAmountOut = amount + 1
-        val msg = {
+        val msg: PlaceLimitOrderMsg = {
             creator: c,
             orderType: o,
-            tick: t,
+            sellTick: t,
             tokenIn: tokenIn,
             tokenOut: tokenOut,
             amountIn: amount,
