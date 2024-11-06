@@ -16,12 +16,6 @@ module types {
         id: TrancheIndex
     }
 
-    type Transition = {
-        name: str,
-        message: Message
-    } 
-
-    
     type Option[a] = None | Some(a)
     
     type LimitOrderType = 
@@ -34,12 +28,12 @@ module types {
     // MESSAGES
 
     type Message = 
-    | DepositPoolSubType(DepositMsg)
-    | PlaceLimitOrderSubType(PlaceLimitOrderMsg)
-    | CancelLimitOrderSubType(CancelLimitOrderMsg)
-    | WithdrawLimitOrderSubType(WithdrawLimitOrderMsg)
-    | WithdrawPoolSubType(WithdrawPoolMsg)
-    | SwapSubType(SwapMsg)
+    | DepositPool(DepositMsg)
+    | PlaceLimitOrder(PlaceLimitOrderMsg)
+    | CancelLimitOrder(CancelLimitOrderMsg)
+    | WithdrawLimitOrder(WithdrawLimitOrderMsg)
+    | WithdrawPool(WithdrawPoolMsg)
+    | Swap(SwapMsg)
     | Init
     | AdvanceTime
 
