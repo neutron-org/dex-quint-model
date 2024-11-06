@@ -203,7 +203,7 @@ module postconditions {
             // ** Specification invariants **
             // Invariant Swap.1
             val buyingPrice = priceFromTick(msg.limitPriceTick)
-            // the amount I would get at my worst price
+            // the amount I would get at my limit price
             val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
             outAmount >= minAmount,
             inAmount >= usedAmount,
