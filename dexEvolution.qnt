@@ -75,8 +75,7 @@ module dexEvolution {
     /// A user who has placed a limit order will once it is fully exhausted (be
     /// it through full withdrawal or cancellation-induced withdrawal) be at no
     /// loss (with respect to the price set by tick specified by the user).
-    /// TODO: We shall not model it as an implication only, but instead we
-    /// should enforce that there were indeed some full withdrawals
+    /// We make sure that the two cases of withdrawals actually happen through witness properties
     val noLossOnExhaustedTranches = base::state.tranchesShares.keys().forall(addr => {
         pure def noLoss(state: State, addr: Addr, key: TrancheKey): bool = and {
             pure val depositedAmount = state.bookkeeping.tranches.deposits.get((addr, key))
@@ -97,4 +96,28 @@ module dexEvolution {
             s.sharesWithdrawn == s.sharesOwned implies base::state.noLoss(addr, key)
         })
     })
+
+    /* WITNESS PROPERTIES */
+    /* These invariants should be violated. If they are not, it means the model is not reaching important states */
+
+    /// It should be possible to exhaust a tranche through cancelation
+    val noExhaustingThroughCancelation = base::state.tranchesShares.keys().forall(addr => {
+        val shareAccount = base::state.tranchesShares.get(addr)
+        shareAccount.keys().forall(key => {
+            val s = shareAccount.get(key)
+            // When there is a cancelation, both of these are set to zero
+            not(s.sharesWithdrawn == 0 and s.sharesOwned == 0)
+        })
+    })
+
+    /// It should be possible to exhaust a tranche through withdraws
+    val noExhaustingThroughWithdraw = base::state.tranchesShares.keys().forall(addr => {
+        val shareAccount = base::state.tranchesShares.get(addr)
+        shareAccount.keys().forall(key => {
+            val s = shareAccount.get(key)
+            not(s.sharesWithdrawn == s.sharesOwned and s.sharesWithdrawn != 0)
+        })
+    })
+
+
 }
