@@ -304,5 +304,68 @@ module baseDexEvolution {
     // coins withdrawn from particular tranches (similar to what deposits and poolWithdraws are doing for pools)
     val makerValuePreserved = true
 
+    /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
+    /// pools with the relevant pair has remained the same or it has increased.
+    pure def nonDecreasingPools(before: State, after: State, tokenPair: TokenPair): bool = {
+        pure def relevantPoolIdsBefore = before.pools.keys().filter(p => p.tokenPair == tokenPair)
+        pure def relevantPoolIdsAfter = after.pools.keys().filter(p => p.tokenPair == tokenPair)
 
+        and {
+            relevantPoolIdsBefore.subseteq(relevantPoolIdsAfter),
+            relevantPoolIdsBefore.forall(p => {
+                approx_gte(
+                    computePoolValue(after.pools.get(p).reserves, p.tick),
+                    computePoolValue(before.pools.get(p).reserves, p.tick),
+                    one
+                )
+            })
+        }
+    }
+
+    /// A user who has placed a limit order will once it is fully exhausted (be
+    /// it through full withdrawal or cancellation-induced withdrawal) be at no
+    /// loss (with respect to the price set by tick specified by the user).
+    /// We make sure that the two cases of withdrawals actually happen through witness properties
+    val noLossOnExhaustedTranches = state.tranchesShares.keys().forall(addr => {
+        pure def noLoss(state: State, addr: Addr, key: TrancheKey): bool = and {
+            pure val depositedAmount = state.bookkeeping.tranches.deposits.get((addr, key))
+            pure val withdrewAmount = state.bookkeeping.tranches.withdrawals.getOrElse((addr, key), 0)
+            pure val canceledAmounts = state.bookkeeping.tranches.cancelations.getOrElse((addr, key), (0, 0))
+
+            pure val totalDeposited = (depositedAmount, 0)
+            pure val totalWithdrew = (canceledAmounts._1, withdrewAmount + canceledAmounts._2)
+
+            pure val deposited = computeDepositValue(totalDeposited, key.sellTick)
+            pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick)
+            approx_gte(withdrew, deposited, fromInt(2))
+        }
+
+        val shareAccount = state.tranchesShares.get(addr)
+        shareAccount.keys().forall(key => {
+            val s = shareAccount.get(key)
+            s.sharesWithdrawn == s.sharesOwned implies state.noLoss(addr, key)
+        })
+    })
+
+    /* WITNESS PROPERTIES */
+    /* These invariants should be violated. If they are not, it means the model is not reaching important states */
+
+    /// It should be possible to exhaust a tranche through cancelation
+    val noExhaustingThroughCancelation = state.tranchesShares.keys().forall(addr => {
+        val shareAccount = state.tranchesShares.get(addr)
+        shareAccount.keys().forall(key => {
+            val s = shareAccount.get(key)
+            // When there is a cancelation, both of these are set to zero
+            not(s.sharesWithdrawn == 0 and s.sharesOwned == 0)
+        })
+    })
+
+    /// It should be possible to exhaust a tranche through withdraws
+    val noExhaustingThroughWithdraw = state.tranchesShares.keys().forall(addr => {
+        val shareAccount = state.tranchesShares.get(addr)
+        shareAccount.keys().forall(key => {
+            val s = shareAccount.get(key)
+            not(s.sharesWithdrawn == s.sharesOwned and s.sharesWithdrawn != 0)
+        })
+    })
 }
