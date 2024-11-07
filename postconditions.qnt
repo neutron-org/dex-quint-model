@@ -273,4 +273,21 @@ module postconditions {
             // ** Invariants **                        
         }
 
+    /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
+    /// pools with the relevant pair has remained the same or it has increased.
+    pure def nonDecreasingPools(before: State, after: State, tokenPair: TokenPair): bool = {
+        pure def relevantPoolIdsBefore = before.pools.keys().filter(p => p.tokenPair == tokenPair)
+        pure def relevantPoolIdsAfter = after.pools.keys().filter(p => p.tokenPair == tokenPair)
+
+        and {
+            relevantPoolIdsBefore.subseteq(relevantPoolIdsAfter),
+            relevantPoolIdsBefore.forall(p => {
+                approx_gte(
+                    computePoolValue(after.pools.get(p).reserves, p.tick),
+                    computePoolValue(before.pools.get(p).reserves, p.tick),
+                    one
+                )
+            })
+        }
     }
+}

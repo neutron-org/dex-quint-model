@@ -312,24 +312,6 @@ module baseDexEvolution {
         (reserves._1 > 0 or reserves._2 > 0) implies totalShares > 0
     })
 
-    /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
-    /// pools with the relevant pair has remained the same or it has increased.
-    pure def nonDecreasingPools(before: State, after: State, tokenPair: TokenPair): bool = {
-        pure def relevantPoolIdsBefore = before.pools.keys().filter(p => p.tokenPair == tokenPair)
-        pure def relevantPoolIdsAfter = after.pools.keys().filter(p => p.tokenPair == tokenPair)
-
-        and {
-            relevantPoolIdsBefore.subseteq(relevantPoolIdsAfter),
-            relevantPoolIdsBefore.forall(p => {
-                approx_gte(
-                    computePoolValue(after.pools.get(p).reserves, p.tick),
-                    computePoolValue(before.pools.get(p).reserves, p.tick),
-                    one
-                )
-            })
-        }
-    }
-
     /// A user who has placed a limit order will once it is fully exhausted (be
     /// it through full withdrawal or cancellation-induced withdrawal) be at no
     /// loss (with respect to the price set by tick specified by the user).
