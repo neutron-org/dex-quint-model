@@ -16,9 +16,7 @@ module types {
         id: TrancheIndex
     }
 
-    type Option[a] = None | Some(a)
-    
-    type LimitOrderType = 
+    type LimitOrderType =
         | FillOrKill
         | ImmediateOrCancel
         | GoodTillCancelled
@@ -178,7 +176,17 @@ module types {
         // total deposits, not to be updated as withdraws happen
         // @audit-info The `swaps` variable is a candidate to be moved into its own separate variable
         deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
-        poolWithdraws: Addr -> PoolId -> (int, int)
+        poolWithdraws: Addr -> PoolId -> (int, int),
+        bookkeeping: TrackedValue
+    }
+
+    /// Bookkeeping values
+    type TrackedValue = {
+        tranches: {
+            deposits: (Addr, TrancheKey) -> int, // only maker tokens can be deposited
+            withdrawals: (Addr, TrancheKey) -> int, // only taker tokens can be withdrawn
+            cancelations: (Addr, TrancheKey) -> (int, int) // both maker and taker can be withdrawn on cancelations
+        }
     }
 
     type Result = {state: State, error: str}

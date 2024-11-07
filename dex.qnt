@@ -8,6 +8,7 @@ module Dex {
     import types.* from "types"
     import consts.* from "consts"
     import utils.* from "utils"
+    import bookkeeping.* from "bookkeeping"
     import basicSpells.* from "lib/basicSpells"
 
     pure def withdrawPool(state: State, msg: WithdrawPoolMsg): Result = {
@@ -148,9 +149,9 @@ module Dex {
         // 2a) handle the remaining amount and update tranches accordingly
         val tranchesSharesUpdate = 
             // no new updates to tranches if the type is ImmediateOrCancel, or 
-            // if the remaining amounot is 0
+            // if the remaining amount is 0
             if (msg.orderType == ImmediateOrCancel or remainingAmount == 0) 
-                {tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares}
+                { tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares, key: None }
             else //if there is something to be placed
                 val expirationBlock = match msg.orderType {
                     | GoodTillTime(block_time) => block_time
@@ -178,6 +179,7 @@ module Dex {
             pools: updatedPools,
             coins: state.coins.set(msg.creator, updatedUserCoins),
             deposits: updatedDeposits,
+            bookkeeping: state.bookkeeping.trackTrancheDeposit(msg.creator, tranchesSharesUpdate.key, remainingAmount),
             ...state
         }
         ok(new_state)
@@ -248,6 +250,7 @@ module Dex {
             tranchesShares: state.tranchesShares.setBy(
                 msg.creator, 
                 old => old.set(msg.trancheKey, updatedUserShares)),
+            bookkeeping: state.bookkeeping.trackTrancheWithdrawal(msg.creator, msg.trancheKey, withdrawnTaker),
             ...state
         }
         ok(updatedState)
@@ -295,6 +298,7 @@ module Dex {
                     .set(msg.trancheKey.takerToken, updatedUserCoinsTaker)
                 ),
             tranches: state.tranches.set(msg.trancheKey, updatedTranche),
+            bookkeeping: state.bookkeeping.trackTrancheCancelation(msg.creator, msg.trancheKey, cancelAmountMakerToken, withdrawAmountTakerToken),
             ... state
         }
         ok(updatedState)
