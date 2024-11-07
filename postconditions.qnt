@@ -236,10 +236,24 @@ module postconditions {
             // the user's shares withdrawn have increased appropriately
             withdrawnShares == 
                 after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
-                before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn
+                before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn,
 
-            // ** Invariants ** 
-        }  
+            // ** Invariants **
+
+            // After a tranche withdrawal, the user will get the pro-rata portion of all
+            // the swap proceeds not yet claimed (since the user’s last withdrawal).
+            // [Maker Limit Order Invariants, 1]
+            pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
+            pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+            pure val tranche = before.tranches.get(msg.trancheKey)
+            pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+            pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
+              acc + q::debug("diff", diff).takerReservesDiff
+            })
+
+            // there can be up to one off-by-one error per swap
+            (withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
+    }
 
     pure def cancelLimitOrderPostcondition(before: State, after: State, msg: CancelLimitOrderMsg): bool =
         val tranche_before: Tranche = before.tranches.get(msg.trancheKey)

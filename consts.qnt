@@ -21,21 +21,20 @@ module consts {
     pure val MAX_FUTURE_BLOCKS: int = 10
 
     // This value is taken from neutron/x/dex/types/price.go#L20-L20
-    val MAX_TICK = 559680 
-    val MAX_SIMULATION_TICK = 1000
-    val MAX_FEE = 100
-    val TICKS: Set[TickIndex] = (-MAX_SIMULATION_TICK).to(MAX_SIMULATION_TICK)
-    val MAX_AMOUNT = 10000
+    pure val MAX_TICK = 559680
+    pure val MAX_FEE = 100
+    pure val TICKS: Set[TickIndex] = Set(-1000, -999, 999, 1000).union((-10).to(10)).union(((-100).to(-90))).union(90.to(100))
+    pure val MAX_AMOUNT = 10000
 
-    val DEBUG_ENABLED = false
+    pure val DEBUG_ENABLED = false
 
 
     // Constants for different setups when running
     // tolerance for equality comparisons
-    val TOLERANCE = 20
-    val FORBID_ZERO_SHARES = true
-    val DEFAULT_CREATOR: Addr = "Alice"
-    val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
+    pure val TOLERANCE = 20
+    pure val FORBID_ZERO_SHARES = true
+    pure val DEFAULT_CREATOR: Addr = "Alice"
+    pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
 
-    val EMPTY_DEPOSIT_DATA = {amounts: (0,0), swaps: false}
-    }
+    pure val EMPTY_DEPOSIT_DATA = {amounts: (0,0), swaps: false}
+}

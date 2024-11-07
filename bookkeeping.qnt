@@ -7,6 +7,7 @@ module bookkeeping {
             deposits: Map(),
             withdrawals: Map(),
             cancelations: Map(),
+            swaps: Map(),
         }
     }
 
@@ -34,7 +35,10 @@ module bookkeeping {
             else
                 withdrawals.put((addr, key), amount)
 
-        { ...t, tranches: { ...t.tranches, withdrawals: newWithdrawals } }
+        // Reset swaps being tracked by for this address and tranche key
+        pure val newSwaps = t.tranches.swaps.put((addr, key), Set())
+
+        { ...t, tranches: { ...t.tranches, withdrawals: newWithdrawals, swaps: newSwaps } }
     }
 
     pure def trackTrancheCancelation(t: TrackedValue, addr: Addr, key: TrancheKey, makerAmount: int, takerAmount: int): TrackedValue = {
@@ -46,5 +50,24 @@ module bookkeeping {
                 cancelations.put((addr, key), (makerAmount, takerAmount))
 
         { ...t, tranches: { ...t.tranches, cancelations: newCancelations } }
+    }
+
+    pure def trackSwap(t: TrackedValue, tranchesShares: Shares, swapUpdate: SwapUpdateInfo): TrackedValue = {
+        // For now, we only need to track swaps on tranches, not on pools
+        pure val newSwaps = swapUpdate.tranchesUpdates.keys().fold(t.tranches.swaps, (swaps, key) => {
+            pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
+            tranchesShares.keys().fold(swaps, (swaps, addr) => {
+                if (tranchesShares.get(addr).keys().contains(key)) {
+                    if (swaps.has((addr, key))) {
+                        swaps.setBy((addr, key), s => s.union(Set(diffForKey)))
+                    } else {
+                        swaps.put((addr, key), Set(diffForKey))
+                    }
+                } else {
+                  swaps
+                }
+            })
+        })
+        { ...t, tranches: { ...t.tranches, swaps: newSwaps } }
     }
 }

@@ -179,7 +179,9 @@ module Dex {
             pools: updatedPools,
             coins: state.coins.set(msg.creator, updatedUserCoins),
             deposits: updatedDeposits,
-            bookkeeping: state.bookkeeping.trackTrancheDeposit(msg.creator, tranchesSharesUpdate.key, remainingAmount),
+            bookkeeping: state.bookkeeping
+              .trackTrancheDeposit(msg.creator, tranchesSharesUpdate.key, remainingAmount)
+              .trackSwap(state.tranchesShares, fulfilledOrderInfo),
             ...state
         }
         ok(new_state)
@@ -222,6 +224,7 @@ module Dex {
             pools: updatedPools,
             tranches: updatedTranches,
             deposits: updatedDeposits,
+            bookkeeping: state.bookkeeping.trackSwap(state.tranchesShares, fulfilledOrderInfo),
             ...state
         }
 

@@ -186,7 +186,8 @@ module types {
         tranches: {
             deposits: (Addr, TrancheKey) -> int, // only maker tokens can be deposited
             withdrawals: (Addr, TrancheKey) -> int, // only taker tokens can be withdrawn
-            cancelations: (Addr, TrancheKey) -> (int, int) // both maker and taker can be withdrawn on cancelations
+            cancelations: (Addr, TrancheKey) -> (int, int), // both maker and taker can be withdrawn on cancelations
+            swaps: (Addr, TrancheKey) -> Set[{ makerReservesDiff: int, takerReservesDiff: int }]
         }
     }
 
