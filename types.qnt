@@ -48,41 +48,42 @@ module types {
         }
 
     type WithdrawPoolMsg = {
-            creator: Addr,
-            tokenPair: (Token, Token),
-            sharesAmount: int,
-            tick: TickIndex,
-            fee: Fee,
+        creator: Addr,
+        tokenPair: (Token, Token),
+        sharesAmount: int,
+        tick: TickIndex,
+        fee: Fee,
         }
 
     type SwapMsg = {
-            creator: Addr,
-            tokenPair: (Token, Token),
-            amount: int,
-            limitPriceTick: TickIndex
+        creator: Addr,
+        tokenPair: (Token, Token),
+        amount: int,
+        limitPriceTick: TickIndex
         }
 
     type PlaceLimitOrderMsg = {
-            creator: Addr,
-            orderType: LimitOrderType,            
-            // we have to choose tickIndex because the log operation is missing
-            // @audit-info : If we will really need the log operation, what are our Quint options?
-            // semantics: 1 tokenIn = price(sellTick) * 1 tokenOut
-            sellTick: TickIndex, 
-            // semantics: I want to exchange tokenIn for tokenOut
-            tokenIn: Token,
-            tokenOut: Token,
-            amountIn: int,
-            maxAmountOut: int,
+        creator: Addr,
+        orderType: LimitOrderType,            
+        // we have to choose tickIndex because the log operation is missing
+        // @audit-info : If we will really need the log operation, what are our Quint options?
+        // semantics: 1 tokenIn = price(sellTick) * 1 tokenOut
+        sellTick: TickIndex, 
+        // semantics: I want to exchange tokenIn for tokenOut
+        tokenIn: Token,
+        tokenOut: Token,
+        amountIn: int,
+        maxAmountOut: int,
         }
         
     type CancelLimitOrderMsg = {
-            creator: Addr,
-            trancheKey: TrancheKey
+        creator: Addr,
+        trancheKey: TrancheKey
         }
+    
     type WithdrawLimitOrderMsg = {
-            creator: Addr,
-            trancheKey: TrancheKey
+        creator: Addr,
+        trancheKey: TrancheKey
         }
 
     // Coins captures the balances of all the users in the system
@@ -104,23 +105,23 @@ module types {
 
     type LiquidityKey = TrancheLiquidityKey(TrancheKey) | PoolLiquidityKey(PoolId)
     type Tranche = {
-            // does not exist in the code: here, we want to be explicit about it.
-            // should only be true until a first exchange happens through the tranche
-            // isFresh <=> reservesMaker == totalMaker
-            isFresh: bool,
-            isActive: bool,
-            reservesMaker: int,
-            reservesTaker: int,
-            totalMaker: int,
-            totalTaker: int,
-            // working directly with the tick instead of the `PriceTakerToMaker`
-            sellTick: int,
-            expirationTime: BlockTime,
-            trancheKey: TrancheKey,
-            // @audit-issue This is saved in the code under TrancheUser. Is there a good reason
-            // for why this could not be udner tranche?
-            makerDenomination: Token,
-            takerDenomination: Token
+        // does not exist in the code: here, we want to be explicit about it.
+        // should only be true until a first exchange happens through the tranche
+        // isFresh <=> reservesMaker == totalMaker
+        isFresh: bool,
+        isActive: bool,
+        reservesMaker: int,
+        reservesTaker: int,
+        totalMaker: int,
+        totalTaker: int,
+        // working directly with the tick instead of the `PriceTakerToMaker`
+        sellTick: int,
+        expirationTime: BlockTime,
+        trancheKey: TrancheKey,
+        // @audit-issue This is saved in the code under TrancheUser. Is there a good reason
+        // for why this could not be udner tranche?
+        makerDenomination: Token,
+        takerDenomination: Token
         }
 
     
