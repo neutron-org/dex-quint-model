@@ -302,7 +302,15 @@ module baseDexEvolution {
     // 
     // TODO: in order to implement this invariant, I will need another bookkeeping variable to keep track of the
     // coins withdrawn from particular tranches (similar to what deposits and poolWithdraws are doing for pools)
+    // Question: is this the same as noLossOnExhaustedTranches? Perhaps it is more general actually
     val makerValuePreserved = true
+
+    /// If a pool has some positive amount of reserves, it also has a positive amount of shares
+    val reservesImplyShares = state.pools.keys().forall(poolId => {
+        val reserves = state.pools.get(poolId).reserves
+        val totalShares = state.poolShares.values().fold(0, (acc, e) => acc + e.getOrElse(poolId, 0))
+        (reserves._1 > 0 or reserves._2 > 0) implies totalShares > 0
+    })
 
     /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
     /// pools with the relevant pair has remained the same or it has increased.
