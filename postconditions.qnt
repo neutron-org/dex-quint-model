@@ -248,7 +248,7 @@ module postconditions {
             pure val tranche = before.tranches.get(msg.trancheKey)
             pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
             pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
-              acc + q::debug("diff", diff).takerReservesDiff
+                acc + diff.takerReservesDiff
             })
 
             // there can be up to one off-by-one error per swap
@@ -273,18 +273,35 @@ module postconditions {
             after.tranches.get(msg.trancheKey).totalMaker,
             
             // This part corresponds to the point 2b from the spec document
-            val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche_before, users_tranches_shares_before).taker_token            
-            // the user's taker token balance has increased for what was withdrawn when cancelling
-            withdrawAmountTakerToken == 
-                after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
-                before.coins.get(msg.creator).get(tranche_before.takerDenomination)
-            and
-            // the totalTaker has decreased for what was cancelled
-            withdrawAmountTakerToken ==
-                before.tranches.get(msg.trancheKey).totalTaker -
-                after.tranches.get(msg.trancheKey).totalTaker,
-                
-            // ** Invariants **                        
+            val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche_before, users_tranches_shares_before).taker_token
+            and {
+                // the user's taker token balance has increased for what was withdrawn when cancelling
+                withdrawAmountTakerToken ==
+                    after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
+                    before.coins.get(msg.creator).get(tranche_before.takerDenomination),
+
+                // the totalTaker has decreased for what was cancelled
+                withdrawAmountTakerToken ==
+                    before.tranches.get(msg.trancheKey).totalTaker -
+                    after.tranches.get(msg.trancheKey).totalTaker,
+
+                // ** Invariants **
+                // After cancelling a tranche:
+                // the user has no more shares in that tranche.
+                // the user received the pro-rata shares of any unused maker denom and of all the swap proceeds [Maker Limit Order Invariants, 2]
+                after.tranchesShares.get(msg.creator).get(msg.trancheKey) == { sharesOwned: 0, sharesWithdrawn: 0 },
+                pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
+                pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+                pure val tranche = before.tranches.get(msg.trancheKey)
+                pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+                pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
+                    acc + diff.takerReservesDiff
+                })
+
+                // there can be up to one off-by-one error per swap
+                // withdrawAmountTakerToken == proRataShare(totalSwappedTakerAmount)
+                (withdrawAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
+            }
         }
 
     /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
