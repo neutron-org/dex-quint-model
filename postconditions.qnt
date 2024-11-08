@@ -1,14 +1,13 @@
 // -*- mode: Bluespec; -*-
-module postconditions {
 
+module postconditions {
     import dec.* from "lib/dec"
     import types.* from "types"
     import consts.* from "consts"
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
 
-
-    pure def withdrawPoolPrecondition(state: State, msg: WithdrawPoolMsg): bool = 
+    pure def withdrawPoolPrecondition(state: State, msg: WithdrawPoolMsg): bool =
         true
 
     pure def withdrawPoolPostcondition(before: State, after: State, msg: WithdrawPoolMsg): bool = 
@@ -26,7 +25,7 @@ module postconditions {
             // ** State changes validation **
             // Reserves are updated
             reservesAfter._1 == reservesBefore._1 - outAmounts._1,
-             reservesAfter._1 >= 0,
+            reservesAfter._1 >= 0,
             reservesAfter._2 == reservesBefore._2 - outAmounts._2, 
             reservesAfter._2 >= 0,
             // Coins are transferred
@@ -41,9 +40,7 @@ module postconditions {
             // ** Specification invariants **
         }
 
-
-
-    pure def depositPostcondition(before: State, after: State, msg: DepositMsg): bool = 
+    pure def depositPostcondition(before: State, after: State, msg: DepositMsg): bool =
         // We could guarantee by design that the token pair is submitted in order
         val pair =  orderTokenPair(msg.tokenPair)
         val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
@@ -102,7 +99,7 @@ module postconditions {
             // else true
         }
 
- pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =                
+     pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =
         val maxBuyTick = - msg.sellTick
         val fulfilledOrderInfo = swap(
             msg.tokenIn,
@@ -130,8 +127,7 @@ module postconditions {
             swapInternallyConsistent(msg, fulfilledOrderInfo),
             
             // if there was still some extra amount, and we are not in the immediateOrCancel case, then it was added as a new tranche
-            implies (
-                remainingAmount > 0 and not(msg.orderType == ImmediateOrCancel),
+            remainingAmount > 0 and not(msg.orderType == ImmediateOrCancel) implies (
                 val userGotRest = if (msg.orderType == ImmediateOrCancel) outAmount else 0
                 val userDiffOut = after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
                 val makerToken = msg.tokenIn
@@ -259,49 +255,47 @@ module postconditions {
         val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
         val users_tranches_shares_before = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
         val users_tranches_before = before.tranchesShares.get(msg.creator).keys()
+
+        val cancelAmountOutMakerToken = computeCancelAmountMakerToken(tranche_before, users_tranches_shares_before)
+        val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche_before, users_tranches_shares_before).taker_token
         and {  
-            // user received their fair amount of maker tokens back                        
-            val cancelAmountOutMakerToken = computeCancelAmountMakerToken(tranche_before, users_tranches_shares_before)                                        
-            // the user's balance has increased for what was cancelled                
+            // the user's balance has increased for what was cancelled
             cancelAmountOutMakerToken == 
             after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
-            before.coins.get(msg.creator).get(tranche_before.makerDenomination)
-            and
+            before.coins.get(msg.creator).get(tranche_before.makerDenomination),
+
             // the totalMaker has decreased for what was cancelled                
             users_tranches_shares_before.sharesOwned ==
             before.tranches.get(msg.trancheKey).totalMaker -
             after.tranches.get(msg.trancheKey).totalMaker,
             
             // This part corresponds to the point 2b from the spec document
-            val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche_before, users_tranches_shares_before).taker_token
-            and {
-                // the user's taker token balance has increased for what was withdrawn when cancelling
-                withdrawAmountTakerToken ==
-                    after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
-                    before.coins.get(msg.creator).get(tranche_before.takerDenomination),
+            // user received their fair amount of maker tokens back
+            // the user's taker token balance has increased for what was withdrawn when cancelling
+            withdrawAmountTakerToken ==
+                after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
+                before.coins.get(msg.creator).get(tranche_before.takerDenomination),
 
-                // the totalTaker has decreased for what was cancelled
-                withdrawAmountTakerToken ==
-                    before.tranches.get(msg.trancheKey).totalTaker -
-                    after.tranches.get(msg.trancheKey).totalTaker,
+            // the totalTaker has decreased for what was cancelled
+            withdrawAmountTakerToken ==
+                before.tranches.get(msg.trancheKey).totalTaker -
+                after.tranches.get(msg.trancheKey).totalTaker,
 
-                // ** Invariants **
-                // After cancelling a tranche:
-                // the user has no more shares in that tranche.
-                // the user received the pro-rata shares of any unused maker denom and of all the swap proceeds [Maker Limit Order Invariants, 2]
-                after.tranchesShares.get(msg.creator).get(msg.trancheKey) == { sharesOwned: 0, sharesWithdrawn: 0 },
-                pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
-                pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
-                pure val tranche = before.tranches.get(msg.trancheKey)
-                pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
-                pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
-                    acc + diff.takerReservesDiff
-                })
+            // ** Invariants **
+            // After cancelling a tranche:
+            // the user has no more shares in that tranche.
+            // the user received the pro-rata shares of any unused maker denom and of all the swap proceeds [Maker Limit Order Invariants, 2]
+            after.tranchesShares.get(msg.creator).get(msg.trancheKey) == { sharesOwned: 0, sharesWithdrawn: 0 },
+            pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
+            pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+            pure val tranche = before.tranches.get(msg.trancheKey)
+            pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+            pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
+                acc + diff.takerReservesDiff
+            })
 
-                // there can be up to one off-by-one error per swap
-                // withdrawAmountTakerToken == proRataShare(totalSwappedTakerAmount)
-                (withdrawAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
-            }
+            // there can be up to one off-by-one error per swap
+            (withdrawAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
         }
 
     /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
