@@ -338,31 +338,31 @@ module postconditions {
     }
 
     pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
-     match message {
-       | DepositPool(msg) => all {
-           depositStateChanges(before, after, msg).reportIfFalse("depositStateChanges postcondition"),
-           poolValueIncreased(before, after, msg).reportIfFalse("poolValueIncreased postcondition"),
-           // TODO: the next is redundant with the previous one
-           nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
-       }
-       | PlaceLimitOrder(msg) => all {
-           placeLimitOrderStateChanges(before, after, msg).reportIfFalse("placeLimitOrderStateChanges postcondition"),
-           nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut)).reportIfFalse("nonDecreasingPools postcondition"),
-       }
+        if (match message {
+          | DepositPool(msg) => and {
+              depositStateChanges(before, after, msg).reportIfFalse("depositStateChanges postcondition"),
+              poolValueIncreased(before, after, msg).reportIfFalse("poolValueIncreased postcondition"),
+              // TODO: the next is redundant with the previous one
+              nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
+          }
+          | PlaceLimitOrder(msg) => and {
+              placeLimitOrderStateChanges(before, after, msg).reportIfFalse("placeLimitOrderStateChanges postcondition"),
+              nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut)).reportIfFalse("nonDecreasingPools postcondition"),
+          }
 
-       | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
-       | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
-       | WithdrawPool(msg) => all {
-           withdrawPoolStateChanges(before, after, msg).reportIfFalse("withdrawPoolStateChanges postcondition"),
-           poolProfit(before, after, msg).reportIfFalse("poolProfit postcondition")
-       }
+          | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
+          | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
+          | WithdrawPool(msg) => and {
+              withdrawPoolStateChanges(before, after, msg).reportIfFalse("withdrawPoolStateChanges postcondition"),
+              poolProfit(before, after, msg).reportIfFalse("poolProfit postcondition")
+          }
 
-       | Swap(msg) => all {
-           swapLimitPriceIsHonored(before, after, msg).reportIfFalse("swapLimitPriceIsHonored postcondition"),
-           nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
-       }
+          | Swap(msg) => and {
+              swapLimitPriceIsHonored(before, after, msg).reportIfFalse("swapLimitPriceIsHonored postcondition"),
+              nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
+          }
 
-       | _ => true
-     }
+          | _ => true
+        }) true else q::debug("postconditionForMessage failed", false)
     }
 }

@@ -34,7 +34,7 @@ module Dex {
             pools: state.pools.set(poolId, {reserves: updatedReserves, shares: updatedShares}),
             coins: state.coins.set(msg.creator, updatedCoinsForCreator),
             poolShares: state.poolShares.set(msg.creator, updatedPoolSharesForCreator),
-            bookkeeping: state.bookkeeping.trackPoolWithdrawal(msg.creator, poolId, outAmounts),
+            bookkeeping: state.bookkeeping.trackPoolWithdrawal(msg.creator, poolId, outAmounts, state.poolShares),
             ...state
         })
     }
@@ -83,7 +83,7 @@ module Dex {
             poolShares: updatedShares,
             pools: updatedPools,
             coins: state.coins.set(msg.creator, updatedCreatorCoins),
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None)),
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares),
             ...state
         })
     }
