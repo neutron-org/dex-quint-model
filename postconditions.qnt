@@ -7,6 +7,8 @@ module postconditions {
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
 
+    /* Postconditions for basic state changes */
+
     pure def withdrawPoolStateChanges(before: State, after: State, msg: WithdrawPoolMsg): bool =
        val pair = orderTokenPair(msg.tokenPair)
        val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
@@ -35,30 +37,6 @@ module postconditions {
           sharesAfter == sharesBefore - msg.sharesAmount,
        }
 
-
-    // Invariant: LP profit from their deposits
-    // simplified LP.5 in specification invariants
-    pure def poolProfit(before: State, after: State, msg: WithdrawPoolMsg): bool =
-       after.bookkeeping.pools.deposits.keys().forall(((creator, poolId)) =>
-          // If the user has withdrawn all their shares
-          after.poolShares.get(creator).get(poolId) == 0 implies
-             val deposited = before.bookkeeping.pools.deposits.getOrElse((creator, poolId), (0, 0))
-             val withdrawn = after.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
-             val swaps = before.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
-             // If there were swaps, the user withdrew more value than deposited
-             // TODO: We could maybe calculate the exact amount here from the swapped amounts as we do for tranches
-             if (swaps != Set()) approx_gt(
-                computeDepositValue(withdrawn, poolId.tick),
-                computeDepositValue(deposited, poolId.tick),
-                fromInt(TOLERANCE)
-             )
-             // Otherwise, the user withdrew no less value than deposited
-             else approxEqualDec(
-                computeDepositValue(withdrawn, poolId.tick),
-                computeDepositValue(deposited, poolId.tick),
-                fromInt(TOLERANCE)
-             )
-       )
 
     pure def depositStateChanges(before: State, after: State, msg: DepositMsg): bool =
        // We could guarantee by design that the token pair is submitted in order
@@ -109,20 +87,6 @@ module postconditions {
           // else true
        }
 
-   pure def poolValueIncreased(before: State, after: State, msg: DepositMsg): bool = {
-      val pair = orderTokenPair(msg.tokenPair)
-      val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-      val token0SellTick = if (pair == msg.tokenPair) msg.token0SellTick else -msg.token0SellTick
-      val poolId = getPoolId(pair, token0SellTick, msg.fee)
-
-      val poolValueBefore: Dec =
-         if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, token0SellTick) else zero
-      val poolValueAfter: Dec = computePoolValue(after.pools.get(poolId).reserves, token0SellTick)
-
-      // since this is a single step, setting the tolerance to 1
-      poolValueAfter.approx_gt(poolValueBefore, one)
-   }
-
     pure def placeLimitOrderStateChanges(before: State, after: State, msg: PlaceLimitOrderMsg): bool =
        val maxBuyTick = -msg.sellTick
        val fulfilledOrderInfo = swap(
@@ -137,7 +101,7 @@ module postconditions {
        )
        val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
        val tranchesUpdateInfo = debug("tranchesUpdates: ", fulfilledOrderInfo.tranchesUpdates)
-       val remainingAmount = debug("remaining amounot = ", fulfilledOrderInfo.remainingAmount)
+       val remainingAmount = debug("remaining amount = ", fulfilledOrderInfo.remainingAmount)
        val outAmount = debug("outAmount = ", fulfilledOrderInfo.outAmount)
 
        // A not fully filled fillOrKill: the state is not changed at all
@@ -220,59 +184,36 @@ module postconditions {
 
           // Sanity: I didn't use more than I put in
           inAmount >= usedAmount,
+
           // TODO: Perhaps a better postcondition would be that at least one of tranches or pools should have been updated.
        }
 
-    /// Swap.1: When a user swaps, their limit price is honored
-    pure def swapLimitPriceIsHonored(before: State, after: State, msg: SwapMsg): bool = {
-       pure val buyingPrice = priceFromTick(msg.limitPriceTick)
-       pure val usedAmount = after.coins.get(msg.creator).get(msg.tokenPair._1) - before.coins.get(msg.creator).get(msg.tokenPair._1)
-       pure val outAmount = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)
-       // The amount I would get at my limit price
-       val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
-       outAmount >= minAmount
+    pure def withdrawLimitOrderStateChanges(before: State, after: State, msg: WithdrawLimitOrderMsg): bool = {
+        val tranche = before.tranches.get(msg.trancheKey)
+        val usersTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+        val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
+        val withdrawnAmountTakerToken = withdrawnAmounts.taker_token
+        val withdrawnShares = withdrawnAmounts.shares
+
+        and {
+           // the user's taker balance has increased for what was withdrawn
+           withdrawnAmountTakerToken ==
+              after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
+              before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
+
+           // the reserves has decreased for what was withdrawn
+           withdrawnAmountTakerToken ==
+              before.tranches.get(msg.trancheKey).reservesTaker -
+              after.tranches.get(msg.trancheKey).reservesTaker,
+
+           // the user's shares withdrawn have increased appropriately
+           withdrawnShares ==
+              after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
+              before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn,
+        }
     }
 
-    pure def withdrawLimitOrderPostcondition(before: State, after: State, msg: WithdrawLimitOrderMsg): bool =
-       val tranche = before.tranches.get(msg.trancheKey)
-       val usersTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
-       val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
-       val withdrawnAmountTakerToken = withdrawnAmounts.taker_token
-       val withdrawnShares = withdrawnAmounts.shares
-
-       and {
-          // **State changes validation**
-          // the user's taker balance has increased for what was withdrawn
-          withdrawnAmountTakerToken ==
-             after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
-             before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
-          // the reserves has decreased for what was withdrawn
-          withdrawnAmountTakerToken ==
-             before.tranches.get(msg.trancheKey).reservesTaker -
-             after.tranches.get(msg.trancheKey).reservesTaker,
-          // the user's shares withdrawn have increased appropriately
-          withdrawnShares ==
-             after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
-             before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn,
-
-          // ** Invariants **
-
-          // After a tranche withdrawal, the user will get the pro-rata portion of all
-          // the swap proceeds not yet claimed (since the user’s last withdrawal).
-          // [Maker Limit Order Invariants, 1]
-          pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
-          pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
-          pure val tranche = before.tranches.get(msg.trancheKey)
-          pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
-          pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
-             acc + diff.takerReservesDiff
-          })
-
-          // there can be up to one off-by-one error per swap
-          (withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
-    }
-
-    pure def cancelLimitOrderPostcondition(before: State, after: State, msg: CancelLimitOrderMsg): bool =
+    pure def cancelLimitOrderStateChanges(before: State, after: State, msg: CancelLimitOrderMsg): bool =
        val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
        val users_tranches_shares_before = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
        val users_tranches_before = before.tranchesShares.get(msg.creator).keys()
@@ -302,22 +243,98 @@ module postconditions {
              before.tranches.get(msg.trancheKey).totalTaker -
              after.tranches.get(msg.trancheKey).totalTaker,
 
-          // ** Invariants **
-          // After cancelling a tranche:
           // the user has no more shares in that tranche.
-          // the user received the pro-rata shares of any unused maker denom and of all the swap proceeds [Maker Limit Order Invariants, 2]
           after.tranchesShares.get(msg.creator).get(msg.trancheKey) == { sharesOwned: 0, sharesWithdrawn: 0 },
-          pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
-          pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
-          pure val tranche = before.tranches.get(msg.trancheKey)
-          pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
-          pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
-             acc + diff.takerReservesDiff
-          })
-
-          // there can be up to one off-by-one error per swap
-          (withdrawAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
        }
+
+    /* Postconditions for specification invariants */
+
+    /// Swap.1: When a user swaps, their limit price is honored
+    pure def swapLimitPriceIsHonored(before: State, after: State, msg: SwapMsg): bool = {
+       pure val buyingPrice = priceFromTick(msg.limitPriceTick)
+       pure val usedAmount = after.coins.get(msg.creator).get(msg.tokenPair._1) - before.coins.get(msg.creator).get(msg.tokenPair._1)
+       pure val outAmount = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)
+       // The amount I would get at my limit price
+       val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
+       outAmount >= minAmount
+    }
+
+    /// After a tranche withdrawal and cancelation, the user will get the pro-rata portion of all
+    /// the swap proceeds not yet claimed (since the user’s last withdrawal).
+    /// [Maker Limit Order Invariants, 1]
+    /// LO.1: When limit orders are swapped through the pro-rata portion of the swap value will returnable to all participants via withdraws
+    /// LO.2: When canceling a limit order the participants will receive their pro-rata share of any unused maker denom as well as their pro-rata share of all swap proceeds.
+    /// Cancellations will not change the future withdraw or cancel outcomes for other participants.
+    pure def userGetsProRataPortion(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
+        // How much the user actually got
+        pure val takerDenom = before.tranches.get(trancheKey).takerDenomination
+        pure val withdrawnAmountTakerToken = after.coins.get(creator).get(takerDenom) - before.coins.get(creator).get(takerDenom)
+
+        // How much it should have gotten
+        pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
+        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
+        pure val tranche = before.tranches.get(trancheKey)
+        pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+        pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
+           acc + diff.takerReservesDiff
+        })
+
+        // There can be up to one off-by-one error per swap
+        pure val tolerance = swaps.size()
+
+        abs(withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount)) <= tolerance
+    }
+
+    // Invariant: LP profit from their deposits
+    // simplified LP.5 in specification invariants
+    // This doesn't check the exact value of profit, but should hold even for partial withdrawals
+    pure def poolProfit(before: State, after: State, msg: WithdrawPoolMsg): bool =
+       after.bookkeeping.pools.deposits.keys().forall(((creator, poolId)) =>
+          // If the user has withdrawn all their shares
+          after.poolShares.get(creator).get(poolId) == 0 implies
+             val deposited = before.bookkeeping.pools.deposits.getOrElse((creator, poolId), (0, 0))
+             val withdrawn = after.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
+             val swaps = before.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
+             // If there were swaps, the user withdrew more value than deposited
+             // TODO: We could maybe calculate the exact amount here from the swapped amounts as we do for tranches
+             // Actually that might not be possible with the current tracking of swaps since there are partial withdraws for pools
+             if (swaps != Set()) approx_gt(
+                computeDepositValue(withdrawn, poolId.tick),
+                computeDepositValue(deposited, poolId.tick),
+                fromInt(TOLERANCE)
+             )
+             // Otherwise, the user withdrew no less value than deposited
+             else approxEqualDec(
+                computeDepositValue(withdrawn, poolId.tick),
+                computeDepositValue(deposited, poolId.tick),
+                fromInt(TOLERANCE)
+             )
+       )
+
+    /// LP.5: When a single user withdraws 100% of their shares from the pool
+    /// - For each time period t when a swap occurs a user receives the correct proportion of the swap fee
+    /// - depositValue = token0 + token1 * price
+    /// - swapFee = token0In * poolFee + token1In  * poolFee * price
+    /// - poolValue = reserves0 + reserves1 * price
+    pure def userGetsProRataPortionIfFullWithdraw(before: State, after: State, msg: WithdrawPoolMsg): bool = {
+      // TODO
+      true
+    }
+
+    /// LP.3: Swapping through a pool can only increase the total value of the pool (assuming token price is the tick price)
+    pure def poolValueIncreased(before: State, after: State, msg: DepositMsg): bool = {
+       val pair = orderTokenPair(msg.tokenPair)
+       val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
+       val token0SellTick = if (pair == msg.tokenPair) msg.token0SellTick else -msg.token0SellTick
+       val poolId = getPoolId(pair, token0SellTick, msg.fee)
+
+       val poolValueBefore: Dec =
+          if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, token0SellTick) else zero
+       val poolValueAfter: Dec = computePoolValue(after.pools.get(poolId).reserves, token0SellTick)
+
+       // since this is a single step, setting the tolerance to 1
+       poolValueAfter.approx_gt(poolValueBefore, one)
+    }
 
     /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
     /// pools with the relevant pair has remained the same or it has increased (L.P.3).
@@ -338,31 +355,41 @@ module postconditions {
     }
 
     pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
-        if (match message {
-          | DepositPool(msg) => and {
-              depositStateChanges(before, after, msg).reportIfFalse("depositStateChanges postcondition"),
-              poolValueIncreased(before, after, msg).reportIfFalse("poolValueIncreased postcondition"),
-              // TODO: the next is redundant with the previous one
-              nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
-          }
-          | PlaceLimitOrder(msg) => and {
-              placeLimitOrderStateChanges(before, after, msg).reportIfFalse("placeLimitOrderStateChanges postcondition"),
-              nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut)).reportIfFalse("nonDecreasingPools postcondition"),
-          }
+        match message {
+            | DepositPool(msg) => and {
+                depositStateChanges(before, after, msg).reportIfFalse("depositStateChanges postcondition"),
+                poolValueIncreased(before, after, msg).reportIfFalse("poolValueIncreased postcondition"),
+                // TODO: the next is redundant with the previous one
+                nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
+            }
 
-          | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
-          | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
-          | WithdrawPool(msg) => and {
-              withdrawPoolStateChanges(before, after, msg).reportIfFalse("withdrawPoolStateChanges postcondition"),
-              poolProfit(before, after, msg).reportIfFalse("poolProfit postcondition")
-          }
+            | PlaceLimitOrder(msg) => and {
+                placeLimitOrderStateChanges(before, after, msg).reportIfFalse("placeLimitOrderStateChanges postcondition"),
+                nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut)).reportIfFalse("nonDecreasingPools postcondition"),
+            }
 
-          | Swap(msg) => and {
-              swapLimitPriceIsHonored(before, after, msg).reportIfFalse("swapLimitPriceIsHonored postcondition"),
-              nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
-          }
+            | CancelLimitOrder(msg) => and {
+                cancelLimitOrderStateChanges(before, after, msg).reportIfFalse("cancelLimitOrderStateChanges postcondition"),
+                userGetsProRataPortion(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortion postcondition"),
 
-          | _ => true
-        }) true else q::debug("postconditionForMessage failed", false)
+            }
+
+            | WithdrawLimitOrder(msg) => all {
+                withdrawLimitOrderStateChanges(before, after, msg).reportIfFalse("withdrawLimitOrderStateChanges postcondition"),
+                userGetsProRataPortion(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortion postcondition"),
+            }
+
+            | WithdrawPool(msg) => and {
+                withdrawPoolStateChanges(before, after, msg).reportIfFalse("withdrawPoolStateChanges postcondition"),
+                poolProfit(before, after, msg).reportIfFalse("poolProfit postcondition"),
+            }
+
+            | Swap(msg) => and {
+                swapLimitPriceIsHonored(before, after, msg).reportIfFalse("swapLimitPriceIsHonored postcondition"),
+                nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
+            }
+
+            | _ => true
+        }
     }
 }
