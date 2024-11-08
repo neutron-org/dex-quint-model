@@ -4,7 +4,6 @@ module utils {
     import dec.* from "lib/dec"
     import types.* from "types"
     import consts.* from "consts"
-    import bookkeeping.* from "bookkeeping"
     import basicSpells.* from "lib/basicSpells"
 
     pure def debug(msg, expr) =
@@ -51,6 +50,21 @@ module utils {
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
 
+    pure val emptyTrackedValue: TrackedValue = {
+        tranches: {
+            deposits: Map(),
+            withdrawals: Map(),
+            cancelations: Map(),
+            swaps: Map(),
+        },
+        pools: {
+            deposits: Map(),
+            withdrawals: Map(),
+            swaps: Map(),
+        }
+    }
+
+
     pure def initState: State =
         // @audit-issue This should be the correct spec, but replaced by a simpler, hard-coded one due to
         // a problem in the simulator: https://github.com/informalsystems/quint/issues/1530
@@ -68,8 +82,6 @@ module utils {
             blockNumber: 0,
             poolShares: CREATORS.mapBy(creator => Map()),
             pools: Map(),
-            deposits: CREATORS.mapBy(creator => Map()),
-            poolWithdraws: CREATORS.mapBy(creator => Map()),
             bookkeeping: emptyTrackedValue
         }
 
@@ -582,15 +594,6 @@ module utils {
         else 
             -poolTick + fee
 
-    pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int):
-    PoolId -> {amounts: (int, int), swaps: bool} = 
-        
-        poolIds.fold(userDeposits, (acc, id) => 
-            if (userDeposits.has(id) and userShares.get(id) > 0)
-                acc.set(id, {swaps: true, ...userDeposits.get(id)})
-            else acc
-            )
-
     // CANCEL RELATED FUNCTIONS
     pure def computeCancelAmountMakerToken(tranche: Tranche, usersShares: UsersTrancheShares): int =     
         // @audit-info The calculation here is different (but equivalent) than in the spec. 
@@ -599,5 +602,14 @@ module utils {
         val sharesOwned = usersShares.sharesOwned
         percentUnfilled.mulInt(sharesOwned).truncate()    
 
+    pure def setByWithDefault(m: a -> b, k: a, op: (b) => b, default: b): a -> b = {
+        if (m.has(k))
+            m.setBy(k, op)
+        else
+            m.put(k, default).setBy(k, op)
+    }
 
+    pure def addAmounts(a: (int, int), b: (int, int)): (int, int) = {
+        (a._1 + b._1, a._2 + b._2)
+    }
 }

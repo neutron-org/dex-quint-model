@@ -11,7 +11,7 @@ module postconditions {
         true
 
     pure def withdrawPoolPostcondition(before: State, after: State, msg: WithdrawPoolMsg): bool = 
-        val pair =  orderTokenPair(msg.tokenPair)
+        val pair = orderTokenPair(msg.tokenPair)
         val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
         val poolId = getPoolId(pair, tick, msg.fee)
         // We assume that we do not remove empty pools
@@ -36,8 +36,31 @@ module postconditions {
             after.poolShares.get(msg.creator).get(poolId) >= 0,
             after.poolShares.get(msg.creator).get(poolId) == before.poolShares.get(msg.creator).get(poolId) - msg.sharesAmount,
             sharesAfter >= 0,
-            sharesAfter == sharesBefore - msg.sharesAmount
+            sharesAfter == sharesBefore - msg.sharesAmount,
             // ** Specification invariants **
+            // Invariant: LP profit from their deposits
+            // simplified LP.5 in specification invariants
+            after.bookkeeping.pools.deposits.keys().forall(((creator, poolId)) =>
+                // If the user has withdrawn all their shares
+                after.poolShares.get(creator).get(poolId) == 0 implies
+                    val deposited = before.bookkeeping.pools.deposits.getOrElse((creator, poolId), (0, 0))
+                    val withdrawn = after.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
+                    val swaps = before.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
+                    // If there were swaps, the user withdrew more value than deposited
+                    // TODO: We could maybe calculate the exact amount here from the swapped amounts as we do for tranches
+                    if (swaps != Set()) approx_gt(
+                        computeDepositValue(withdrawn, poolId.tick),
+                        computeDepositValue(deposited, poolId.tick),
+                        fromInt(TOLERANCE)
+                    )
+                    // Otherwise, the user withdrew no less value than deposited
+                    else approxEqualDec(
+                        computeDepositValue(withdrawn, poolId.tick),
+                        computeDepositValue(deposited, poolId.tick),
+                        fromInt(TOLERANCE)
+                    )
+            )
+
         }
 
     pure def depositPostcondition(before: State, after: State, msg: DepositMsg): bool =
@@ -61,7 +84,7 @@ module postconditions {
         val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, token0SellTick, msg.fee) else zero
         val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, token0SellTick, autoswapFee)
         
-        and{
+        and {
             // Reserves are updated
             reservesAfter._1 == reservesBefore._1 + inAmounts._1,
             reservesAfter._2 == reservesBefore._2 + inAmounts._2,

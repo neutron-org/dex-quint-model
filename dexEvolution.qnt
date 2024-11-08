@@ -5,6 +5,7 @@ module dexEvolution {
     import types.* from "types"
     import utils.* from "utils"
     import postconditions.* from "postconditions"
+    import bookkeeping.* from "bookkeeping"
     import baseDexEvolution as base from "baseDexEvolution"
 
     // EXTRA STATE VARIABLES
@@ -17,7 +18,7 @@ module dexEvolution {
         base::init,
         postconditionOK' = true,
         actionTaken' = Init,
-        actionSuccess' = true
+        actionSuccess' = true,
     }
 
     action step: bool = any {
@@ -53,4 +54,9 @@ module dexEvolution {
 
     // Invariant: postconditions always hold
     val postconditions = postconditionOK
+
+    val allInvariants = all {
+        base::allInvariants,
+        if (postconditionOK) true else base::invariantViolation("postconditionOK"),
+    }
 }
