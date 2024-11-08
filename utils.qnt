@@ -612,4 +612,7 @@ module utils {
     pure def addAmounts(a: (int, int), b: (int, int)): (int, int) = {
         (a._1 + b._1, a._2 + b._2)
     }
+
+    pure def reportIfFalse(cond: bool, name: str): bool =
+        if (cond) true else q::debug(name, false)
 }

@@ -54,6 +54,7 @@ module bookkeeping {
                 deposits.put((addr, poolId), amounts)
 
         pure val newSwaps = match swappedAmounts {
+          // FIXME: this should actually update for other addresses but addr
           | Some(amounts) => t.pools.swaps.setByWithDefault((addr, poolId), s => s.union(Set({ token0Diff: amounts._1, token1Diff: amounts._2 })), Set())
           | None => t.pools.swaps
         }
@@ -70,6 +71,7 @@ module bookkeeping {
                 withdrawals.put((addr, poolId), amounts)
 
         // Reset swaps being tracked by for this address and pool id
+        // FIXME: for pools, there can be partial withdrawals
         pure val newSwaps = t.pools.swaps.put((addr, poolId), Set())
 
         { ...t, pools: { ...t.pools, withdrawals: newWithdrawals, swaps: newSwaps } }

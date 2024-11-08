@@ -344,19 +344,16 @@ module baseDexEvolution {
         a != b implies state.tranchesShares.get(a).keys().intersect(state.tranchesShares.get(b).keys()) == Set()
     )
 
-    pure def invariantViolation(name: str): bool =
-      q::debug(name, false)
-
     val allInvariants = all {
-        if (nonNegativeReserves) true else { invariantViolation("nonNegativeReserves") },
-        if (nonNegativeSharesSupply) true else { invariantViolation("nonNegativeSharesSupply") },
-        if (nonNegativeBalances) true else { invariantViolation("nonNegativeBalances") },
-        if (expirationTimeSanity) true else { invariantViolation("expirationTimeSanity") },
-        if (totalMakerInvariant) true else { invariantViolation("totalMakerInvariant") },
-        if (makerValuePreserved) true else { invariantViolation("makerValuePreserved") },
-        if (nonNegativePoolReserves) true else { invariantViolation("nonNegativePoolReserves") },
-        if (nonNegativeTrancheAmounts) true else { invariantViolation("nonNegativeTrancheAmounts") },
-        if (reservesImplyShares) true else { invariantViolation("reservesImplyShares") },
-        if (noLossOnExhaustedTranches) true else { invariantViolation("noLossOnExhaustedTranches") },
+        nonNegativeReserves.reportIfFalse("nonNegativeReserves"),
+        nonNegativeSharesSupply.reportIfFalse("nonNegativeSharesSupply"),
+        nonNegativeBalances.reportIfFalse("nonNegativeBalances"),
+        expirationTimeSanity.reportIfFalse("expirationTimeSanity"),
+        totalMakerInvariant.reportIfFalse("totalMakerInvariant"),
+        makerValuePreserved.reportIfFalse("makerValuePreserved"),
+        nonNegativePoolReserves.reportIfFalse("nonNegativePoolReserves"),
+        nonNegativeTrancheAmounts.reportIfFalse("nonNegativeTrancheAmounts"),
+        reservesImplyShares.reportIfFalse("reservesImplyShares"),
+        noLossOnExhaustedTranches.reportIfFalse("noLossOnExhaustedTranches"),
     }
 }
