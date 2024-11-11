@@ -7,10 +7,11 @@ module runsUtils {
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
     import dexEvolution.* from "dexEvolution"
+    import baseDexEvolution as baseEvolution from "baseDexEvolution"
     import postconditions.* from "postconditions"
 
     action unchangedState = all {
-        state' = state,
+        baseEvolution::state' = baseEvolution::state,
         postconditionOK' = postconditionOK,
         actionTaken' = actionTaken,
         actionSuccess' = actionSuccess
@@ -21,7 +22,7 @@ module runsUtils {
         creator: creator,
         tokenPair: poolKey.tokenPair,
         amountPair: amountPair,
-        tick: poolKey.tick,
+        token0SellTick: poolKey.tick,
         fee: poolKey.fee,
         autoswap: doAutoswap
     }

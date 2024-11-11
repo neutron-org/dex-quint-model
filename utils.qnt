@@ -44,7 +44,7 @@ module utils {
     pure def min(a,b) = if (a<b) a else b
 
     pure def priceFromTick(tick: int): Dec =
-        BASE_PRICE.pow(-tick)
+        BASE_PRICE.pow(tick)
     
     pure def ok(state: State): Result = {state: state, error: "nil"}
 
@@ -79,12 +79,11 @@ module utils {
             | None => MAX_TICK
         }
 
-    pure def computePoolValue(reserves: (int, int), tick0To1: int): Dec = 
-        val tick1To0 = -tick0To1
-        val price1to0 = priceFromTick(tick1To0)
-        fromInt(reserves._1).add(mulInt(price1to0, reserves._2))
+    pure def computePoolValue(reserves: (int, int), token0SellTick: int): Dec =         
+        val token0SellPrice = priceFromTick(token0SellTick)
+        fromInt(reserves._1).add(intDivDec(reserves._2, token0SellPrice))
 
-    pure def computeDepositValue(amounts: (int, int), tick0To1: int): Dec = computePoolValue(amounts, tick0To1)
+    pure def computeDepositValue(amounts: (int, int), token0SellTick: int): Dec = computePoolValue(amounts, token0SellTick)
 
     pure def tokenLT(t1: Token, t2: Token, token_num_values: Token -> int): bool =
         // @audit-info What is the best practice to encode assumptions on pure functions,
@@ -130,13 +129,13 @@ module utils {
         // the tranches and pool updates are in line with what the user received
         userGotFromPools + userGotFromTranches == swapUpdate.outAmount    
 
-    pure def calculateTrancheKey(makerToken: Token, takerToken: Token, tick: TickIndex, tranches: TrancheKey -> Tranche, expirationBlockTime: BlockTime): TrancheKey = 
+    pure def calculateTrancheKey(makerToken: Token, takerToken: Token, sellTick: TickIndex, tranches: TrancheKey -> Tranche, expirationBlockTime: BlockTime): TrancheKey = 
         val appropriateTrancheKeys = tranches.keys().filter(key =>
             val tranche = tranches.get(key) 
             and{
                 key.makerToken == makerToken, 
                 key.takerToken == takerToken,
-                key.tick == tick, 
+                key.sellTick == sellTick, 
                 tranche.isFresh,
                 tranche.expirationTime == expirationBlockTime,
                 tranche.isActive
@@ -151,7 +150,7 @@ module utils {
                 (acc, key) => if (key.id > acc) key.id else acc
             )
             // in the implementation, the id is connected to the block number. Here, we use increasing values
-            {makerToken: makerToken, takerToken: takerToken, tick: tick, id: maxTrancheId + 1}
+            {makerToken: makerToken, takerToken: takerToken, sellTick: sellTick, id: maxTrancheId + 1}
    
     // given an amount in the taker token, return how much of it the tranche can exchange and the update amount of the tranche
     pure def calculateTrancheExchangableAmount(amount: int, tranche: Tranche): 
@@ -160,15 +159,13 @@ module utils {
         exchangedTakerAmount: int,
         exchangedMakerAmount: int
     } = {        
-        val priceTakerToMaker = priceFromTick(tranche.tick)
+        val makerPrice = priceFromTick(tranche.sellTick)
         val trancheAmountInTakerToken: int = 
-            intDivDec(
-                tranche.reservesMaker,
-                priceTakerToMaker
-            ).truncate()        
+            mulInt(makerPrice, tranche.reservesMaker).truncate()
+            
         if (amount <= trancheAmountInTakerToken) 
             val trancheRemainingTakerToken: int = trancheAmountInTakerToken - amount
-            val trancheRemainingMakerToken = mulInt(priceTakerToMaker, trancheRemainingTakerToken).truncate()            
+            val trancheRemainingMakerToken = intDivDec(trancheRemainingTakerToken, makerPrice).truncate()            
             {
                 trancheRemainingAmount: trancheRemainingMakerToken,
                 exchangedTakerAmount: amount,
@@ -185,13 +182,13 @@ module utils {
     pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey]): TrancheKey =
         trancheKeys.fold(
             // @audit-issue trancheKeys.chooseSome() ideally, but that one is still unimplemented in the simulation
-            {makerToken: "_", takerToken: "_", tick: MAX_TICK*10, id: 0},
+            {makerToken: "_", takerToken: "_", sellTick: MAX_TICK*10, id: 0},
             (acc, key) => if (trancheLTE(key, acc)) key else acc
         )
     
     pure def getMinimumPoolKey(poolKeys: Set[PoolId], isToken0Liquidity: bool): PoolId =
         // start with a max_tick as initial, so that as soon as there is something found we replace the initial tick
-        val initTick = if (isToken0Liquidity) -MAX_TICK else MAX_TICK
+        val initTick = if (isToken0Liquidity) MAX_TICK else -MAX_TICK
         val minKey = poolKeys.fold(
             // ideally, choose some, but doesn't work in the simulation
             {tokenPair: ("_", "_"), tick: initTick, fee: 0},
@@ -223,20 +220,21 @@ module utils {
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         // checked: it should be both.
-        val relevantTranches = tranches.keys()
-            .filter(key => and{
-                key.makerToken == tokenOut,
-                key.takerToken == tokenIn,
-                key.tick <= maxPriceTick,
-                tranches.get(key).isActive,
-                tranches.get(key).reservesMaker > 0
-                })
-                        
-        val relevantPools = pools.keys()
-            .filter(id => and{
-                id.tokenPair == normalizedPair,
-                computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick
-                })
+        val relevantTranches = tranches.keys().filter(key => 
+            key.makerToken == tokenOut and
+            key.takerToken == tokenIn and
+            key.sellTick <= maxPriceTick and
+            tranches.get(key).isActive and
+            tranches.get(key).reservesMaker > 0
+            )
+
+        // find the pool that has liquidity that the user is asking for, and the tick is better than maxPriceTick   
+        val relevantPools = pools.keys().filter(id =>
+            id.tokenPair == normalizedPair and
+            implies(askingForToken0Liquidity, pools.get(id).reserves._1 > 0) and
+            implies(not(askingForToken0Liquidity), pools.get(id).reserves._2 > 0) and
+            computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick
+            )
             
         val relevantLiquiditySize = size(relevantTranches) + size(relevantPools)
 
@@ -249,7 +247,8 @@ module utils {
                 remainingAmountToExchange: amount,                
                 remainingTranches: relevantTranches, 
                 remainingPools: relevantPools,
-                outAmount: 0},
+                outAmount: 0
+            },
             (acc, _) =>
                 // Iterate only if there is still amount to exchange
                 if (acc.remainingAmountToExchange == 0) acc else
@@ -263,7 +262,7 @@ module utils {
                 
                 // use the tranche key only if there are no more pools  or there are pools, but
                 //  their best price is strictly larger than that of the tranches
-                if (size(acc.remainingPools) == 0 or minTrancheKey.tick < minPoolReserveTick)                        
+                if (size(acc.remainingPools) == 0 or minTrancheKey.sellTick < minPoolReserveTick)                        
                     // I want to know how much I can exchange in this tranche 
                     val tranche = tranches.get(minTrancheKey)
                     val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
@@ -281,13 +280,13 @@ module utils {
                 else
                     val pool = pools.get(minPoolKey)
                     // tokenB is the one that the user will be getting
-                    val reservesTokenB = if (isPairNormalized) pool.reserves._2 else pool.reserves._1   
-                    val exchangeRate = priceFromTick(minPoolReserveTick)                            
-                    val requiredAmount = mulInt(exchangeRate, acc.remainingAmountToExchange).truncate()                        
-                    val userGetsFromPool = if (requiredAmount <= reservesTokenB) requiredAmount else  reservesTokenB                        
+                    val reservesTokenOut = if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2
+                    val priceTokenOut = priceFromTick(minPoolReserveTick)                            
+                    val wantFromPool = intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate()                        
+                    val userGetsFromPool = if (wantFromPool <= reservesTokenOut) wantFromPool else  reservesTokenOut                        
                     val userPutsIntoPool = 
-                        if (requiredAmount <= reservesTokenB) acc.remainingAmountToExchange 
-                        else intDivDec(reservesTokenB, exchangeRate).truncate()
+                        if (wantFromPool <= reservesTokenOut) acc.remainingAmountToExchange 
+                        else mulInt(priceTokenOut, reservesTokenOut).truncate()
 
                     {
                         remainingPools: acc.remainingPools.setRemove(minPoolKey),
@@ -329,6 +328,7 @@ module utils {
             {
                 reservesMaker: before.tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
                 reservesTaker: before.tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                totalTaker: before.tranches.get(trancheKey).totalTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
                 isFresh: false,
                 ...before.tranches.get(trancheKey),
             }
@@ -352,6 +352,7 @@ module utils {
                 {
                     reservesMaker: tranches.get(trancheKey).reservesMaker + tranchesUpdateInfo.get(trancheKey).makerReservesDiff,
                     reservesTaker: tranches.get(trancheKey).reservesTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
+                    totalTaker: tranches.get(trancheKey).totalTaker + tranchesUpdateInfo.get(trancheKey).takerReservesDiff,
                     isFresh: false,
                     ...tranches.get(trancheKey)
                 }
@@ -377,11 +378,10 @@ module utils {
         // now it is reversed: the remaining amount of the tokenIn becomes a maker token of a new tranche
         val makerToken = msg.tokenIn
         // and the tokenOut, the one that the creator wants to receive, becomes the taker token
-        val takerToken = msg.tokenOut
-        val tick = msg.tick
+        val takerToken = msg.tokenOut        
         val creator = msg.creator
         
-        val trancheKey = calculateTrancheKey(makerToken, takerToken, tick, tranches, expirationBlockTime)                      
+        val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.sellTick, tranches, expirationBlockTime)                      
         val tranchesAndSharesUpdate = 
         if (tranches.keys().contains(trancheKey)) // if the key was one of the previously existing
             val updatedTranches = tranches.setBy(trancheKey, 
@@ -405,7 +405,7 @@ module utils {
                 reservesTaker: 0,
                 totalMaker: amount,
                 totalTaker: 0,
-                tick: tick,
+                sellTick: msg.sellTick,
                 expirationTime: expirationBlockTime,
                 trancheKey: trancheKey,
                 makerDenomination: makerToken,
@@ -425,6 +425,44 @@ module utils {
 
     val emptyPool = {reserves: (0, 0), shares: 0}
 
+    pure def isTokenBehindEnemyLines(state: State, isPlacingToken0: bool, pair: TokenPair, tick: TickIndex, fee: TickIndex): bool = 
+        // the tick at which I want to place the token
+        val tickWithFee = computeReserveTick(tick, isPlacingToken0, fee)
+        // the tick below which there should be no token1 liquidity
+        val borderTick = -tickWithFee
+        // if there is a pool with liquidity for the counterparty token
+        // which is crossed by borderTick
+        val poolLiquidityBehindEnemyLine = state.pools.keys().exists(id =>
+            id.tokenPair == pair and
+            // If we are placing token0, there are positive reserves of token1
+            implies(isPlacingToken0, state.pools.get(id).reserves._2 > 0) and 
+            // If we are placing token1, there are positive reserves of token0
+            implies(not(isPlacingToken0), state.pools.get(id).reserves._1 > 0) and
+            // the tick at which the liquidity for the counterparty token is placed
+            val existingTickWithFee1 = computeReserveTick(id.tick, not(isPlacingToken0), id.fee)                 
+            borderTick > existingTickWithFee1
+            )
+
+        val tokenToPlace = if (isPlacingToken0) pair._1 else pair._2
+        val counterpartyToken = if (isPlacingToken0) pair._2 else pair._1
+
+        // if there is a tranche with liquidity for the counterparty token which is crossed by borderTick
+        val trancheLiquidityBehindEnemyLine = state.tranches.keys().exists(key =>         
+            key.makerToken == counterpartyToken and
+            key.takerToken == tokenToPlace and                
+            state.tranches.get(key).isActive and
+            state.tranches.get(key).reservesMaker > 0 and
+            borderTick > state.tranches.get(key).sellTick
+            )
+
+        poolLiquidityBehindEnemyLine or trancheLiquidityBehindEnemyLine        
+
+    // assumes that `pair` is sorted
+    pure def isPoolBehindEnemyLines(state: State, pair: TokenPair, tick: TickIndex, fee: TickIndex, amounts: (int, int)): bool = 
+        val token0BEL = if (amounts._1 > 0) isTokenBehindEnemyLines(state, true, pair, tick, fee) else false
+        val token1BEL = if (amounts._2 > 0) isTokenBehindEnemyLines(state, false, pair, tick, fee) else false
+        token0BEL or token1BEL
+
     // Calculates the amounts that may be deposited so that the pool ratios get preserved
     pure def computeAmountsDeposit(reserves: (int, int), amounts: (int, int)): (int, int) = {
         val inAmount0 = 
@@ -443,11 +481,11 @@ module utils {
 
     // LP.2 in specification invariants
     // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
-    pure def computeAutoswapFee(residualAmounts: (int, int), tick0To1: TickIndex, fee: TickIndex): Dec =
+    pure def computeAutoswapFee(residualAmounts: (int, int), tick1To0: TickIndex, fee: TickIndex): Dec =
         val res0 : Dec = residualAmounts._1.fromInt()
         val res1 : Dec = residualAmounts._2.fromInt()
         val factor: Dec = one.sub(priceFromTick(fee))
-        val price1To0: Dec = priceFromTick(-tick0To1)
+        val price1To0: Dec = priceFromTick(tick1To0)
         add(
             res0.mul(factor),
             res1.mul(factor).mul(price1To0)
@@ -460,25 +498,15 @@ module utils {
     // LP.1 and LP.2 in specification invariants
     // shareValue = totalPreexistingShares / (totalPoolValue + autswapFee)
     // sharesMinted = (depositValue - autoswapFee) * shareValue
-    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), tick: int, autoswapFee: Dec): int =
+    pure def computeSharesDeposit(existingShares: int, reserves: (int, int), amounts: (int, int), token0SellTick: int, autoswapFee: Dec): int =
         
-        val poolValue = computePoolValue(reserves, tick)
-        val depositValue: Dec = computeDepositValue(amounts, tick)      
+        val poolValue = computePoolValue(reserves, token0SellTick)
+        val depositValue: Dec = computeDepositValue(amounts, token0SellTick)      
         if (poolValue.equal(zero)) depositValue.truncate()
         else 
             val shareValue = intDivDec(existingShares, poolValue.add(autoswapFee))
             sub(depositValue, autoswapFee).mul(shareValue).truncate()
-
-    // This specifies the implementation
-    // fee = (upperTickIndex - lowerTickIndex) / 2
-    // residualShares = residualAmounts0 * (Price1to0Center / Price1to0Upper) + residualAmounts1 * Price1to0Lower
-    pure def computeResidualShares(residualAmounts: (int, int), id: PoolId): int = 
-        val upperTickIndex = id.tick + id.fee
-        val lowerTickIndex = -id.tick + id.fee
-        val fee = (upperTickIndex - lowerTickIndex) / 2
-        val amount0Discount = priceFromTick(-fee)
-        val priceLowerTakerToMaker = priceFromTick(-id.tick + id.fee)
-        amount0Discount.mul(residualAmounts._1.fromInt()).add(priceLowerTakerToMaker.mul(residualAmounts._2.fromInt())).truncate()
+    
 
     // WITHDRAW TRANCHE RELATED FUNCTIONS
 
@@ -501,10 +529,11 @@ module utils {
 
         val percentFilled = calculatePercentFilled(tranche)
         val withdrawAmountInMakerToken = percentFilled.mulInt(userShares.sharesOwned).truncate() - userShares.sharesWithdrawn                
-        val withdrawAmountInTakerToken = intDivDec(withdrawAmountInMakerToken, priceFromTick(tranche.tick)).truncate()
+        val withdrawAmountInTakerToken = mulInt(priceFromTick(tranche.sellTick), withdrawAmountInMakerToken).truncate()
 
         {taker_token: withdrawAmountInTakerToken, shares: withdrawAmountInMakerToken}
-
+    
+        
     // WITHDRAW POOL RELATED FUNCTIONS
 
     // Assumes that totalShares > 0, which is checked by the invariants
@@ -525,10 +554,10 @@ module utils {
 
     pure def trancheLTE(t1: TrancheKey, t2: TrancheKey): bool = 
         // assume here: t1.pair == t2.pair; otherwise, unordered
-        if (t1.tick == t2.tick)
+        if (t1.sellTick == t2.sellTick)
             t1.id <= t2.id
         else
-            t1.tick <= t2.tick
+            t1.sellTick <= t2.sellTick
 
     pure def poolLTE(p1: PoolId, p2: PoolId, isToken0Liquidity: bool): bool =
         val tick1 = computeReserveTick(p1.tick, isToken0Liquidity, p1.fee)
@@ -543,9 +572,9 @@ module utils {
 
     pure def computeReserveTick(poolTick: TickIndex, isToken0Liquidity: bool, fee: Fee): TickIndex = 
         if (isToken0Liquidity) 
-            -poolTick + fee 
+            poolTick + fee 
         else 
-            poolTick + fee
+            -poolTick + fee
 
     pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int):
     PoolId -> {amounts: (int, int), swaps: bool} = 

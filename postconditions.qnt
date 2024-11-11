@@ -21,6 +21,7 @@ module postconditions {
         val reservesAfter = after.pools.get(poolId).reserves
         val sharesBefore = before.pools.get(poolId).shares
         val sharesAfter = after.pools.get(poolId).shares
+        // corresponds to MLO 1.e
         val outAmounts = computeAmountsWithdrawnPool(reservesBefore, sharesBefore, msg.sharesAmount)
         and{
             // ** State changes validation **
@@ -47,8 +48,8 @@ module postconditions {
         // We could guarantee by design that the token pair is submitted in order
         val pair =  orderTokenPair(msg.tokenPair)
         val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
-        val tick0To1 = if (pair == msg.tokenPair) msg.tick else -msg.tick
-        val poolId = getPoolId(pair, tick0To1, msg.fee)
+        val token0SellTick = if (pair == msg.tokenPair) msg.token0SellTick else -msg.token0SellTick
+        val poolId = getPoolId(pair, token0SellTick, msg.fee)
         // ** State changes validation **
         // Pool exists
         after.pools.has(poolId) and 
@@ -61,8 +62,8 @@ module postconditions {
         val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
         val inAmounts = if (msg.autoswap) amounts
                         else inAmountsBeforeAutoswap
-        val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, tick0To1, msg.fee) else zero
-        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, tick0To1, autoswapFee)
+        val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, token0SellTick, msg.fee) else zero
+        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, token0SellTick, autoswapFee)
         
         and{
             // Reserves are updated
@@ -81,8 +82,9 @@ module postconditions {
                 outShares,        
             sharesAfter == sharesBefore + outShares,
             // Pool value increases
-            val poolValueBefore: Dec = if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, tick0To1) else zero
-            val poolValueAfter: Dec = computePoolValue(after.pools.get(poolId).reserves, tick0To1)            
+            val poolValueBefore: Dec = 
+                if (before.pools.has(poolId)) computePoolValue(before.pools.get(poolId).reserves, token0SellTick) else zero
+            val poolValueAfter: Dec = computePoolValue(after.pools.get(poolId).reserves, token0SellTick)            
             
             /* Specification Invariants */
             // since this is a single step, setting the tolerance to 1
@@ -101,21 +103,24 @@ module postconditions {
             // else true
         }
 
- pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =
+ pure def placeLimitOrderPostcondition(before: State, after: State, msg: PlaceLimitOrderMsg): bool =                
+        val maxBuyTick = - msg.sellTick
         val fulfilledOrderInfo = swap(
             msg.tokenIn,
             msg.tokenOut,
             before.tranches,
             before.pools,
             msg.amountIn,
-            msg.tick,
+            maxBuyTick,
             msg.maxAmountOut
             
         )
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = debug("tranchesUpdates: ", fulfilledOrderInfo.tranchesUpdates)
         val remainingAmount = debug("remaining amounot = ", fulfilledOrderInfo.remainingAmount)
+        val inAmount = msg.amountIn
         val outAmount = debug("outAmount = ", fulfilledOrderInfo.outAmount)
+        val usedAmount = debug("usedAmount: ", inAmount - remainingAmount)
 
         // A not fully filled fillOrKill: the state is not changed at all
         if (remainingAmount > 0 and msg.orderType == FillOrKill) 
@@ -126,6 +131,20 @@ module postconditions {
             validatePoolsUpdates(before, after, poolsUpdateInfo),
             validateTranchesUpdates(before, after, tranchesUpdateInfo),
             swapInternallyConsistent(msg, fulfilledOrderInfo),
+
+            // ** Specification invariants **
+            // Invariant Swap.1
+            val buyingPrice = priceFromTick(maxBuyTick)
+            // the amount I would get at my limit price
+            val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
+            // TLO 1.a
+            outAmount >= minAmount,
+            // TLO 1.b
+            inAmount >= usedAmount,
+            // This is the case of where remainingAmount was 0 (due to the if condition)
+            // The implication follows from the definition of outAmount, but spelling it
+            // out here for clarity
+            implies(msg.orderType == FillOrKill, outAmount == inAmount),
             
             // if there was still some extra amount, and we are not in the immediateOrCancel case, then it was added as a new tranche
             implies (
@@ -140,7 +159,8 @@ module postconditions {
                     | JustInTime => before.blockNumber + 1
                     | _ => -1
                 }
-                val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.tick, before.tranches, blockExpirationTime)                
+                
+                val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.sellTick, before.tranches, blockExpirationTime)                
                 and{            
                     // user should have received the correct amount
                     outAmount + userGotRest == userDiffOut,
@@ -166,6 +186,8 @@ module postconditions {
             tokenOutGained == after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut),            
             val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
             tokenInSpent == before.coins.get(msg.creator).get(msg.tokenIn) - after.coins.get(msg.creator).get(msg.tokenIn)
+
+
   
         } 
 
@@ -199,11 +221,14 @@ module postconditions {
             
             // ** Specification invariants **
             // Invariant Swap.1
-            val exchangeRate = priceFromTick(msg.limitPriceTick)
-            val minAmount = usedAmount.fromInt().mul(exchangeRate).truncate()
+            val buyingPrice = priceFromTick(msg.limitPriceTick)
+            // the amount I would get at my limit price
+            val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
+            // TLO 1.a
             outAmount >= minAmount,
+            // TLO 1.b
             inAmount >= usedAmount,
-            // Invariant LP.3
+            // // Invariant LP.3
             poolsUpdateInfo.keys().forall(id =>
                 val nontrivialDiff = abs(poolsUpdateInfo.get(id).token0Diff) > 0 or abs(poolsUpdateInfo.get(id).token1Diff) > 0
                 val poolValueBefore = computePoolValue(before.pools.get(id).reserves, id.tick)
