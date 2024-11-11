@@ -5,25 +5,25 @@ module bookkeeping {
 
     pure val emptyTrackedValue: TrackedValue = {
         tranches: {
-            deposits: Map(),
+            placements: Map(),
             withdrawals: Map(),
             cancelations: Map(),
             swaps: Map(),
         }
     }
 
-    pure def trackTrancheDeposit(t: TrackedValue, addr: Addr, key: Option[TrancheKey], amount: int): TrackedValue = {
+    pure def trackTranchePlacement(t: TrackedValue, addr: Addr, key: Option[TrancheKey], amount: int): TrackedValue = {
         match key {
           | None => t
           | Some(key) => {
-              pure val deposits = t.tranches.deposits
-              pure val newDeposits =
-                  if (deposits.has((addr, key)))
-                      deposits.setBy((addr, key), v => v + amount)
+              pure val placements = t.tranches.placements
+              pure val newPlacements =
+                  if (placements.has((addr, key)))
+                      placements.setBy((addr, key), v => v + amount)
                   else
-                      deposits.put((addr, key), amount)
+                      placements.put((addr, key), amount)
 
-              { ...t, tranches: { ...t.tranches, deposits: newDeposits } }
+              { ...t, tranches: { ...t.tranches, placements: newPlacements } }
           }
         }
     }
