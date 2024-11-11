@@ -53,7 +53,7 @@ module postconditions {
        val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
        val inAmounts = if (msg.autoswap) amounts else inAmountsBeforeAutoswap
-       val autoswapFee = if (msg.autoswap) computeAutoswapFee(residualAmounts, token0SellTick, msg.fee) else zero
+       val autoswapFee = if (msg.autoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, token0SellTick, autoswapFee)
 
        and {
@@ -313,6 +313,7 @@ module postconditions {
              // If there were swaps, the user withdrew more value than deposited
              // TODO: We could maybe calculate the exact amount here from the swapped amounts as we do for tranches
              // Actually that might not be possible with the current tracking of swaps since there are partial withdraws for pools
+            //  TODO: If there were swaps, the user collected also the fee on those swaps
              if (swaps != Set()) approx_gt(
                 computeDepositValue(withdrawn, poolId.tick),
                 computeDepositValue(deposited, poolId.tick),
@@ -374,8 +375,6 @@ module postconditions {
             | DepositPool(msg) => and {
                 depositStateChanges(before, after, msg).reportIfFalse("depositStateChanges postcondition"),
                 poolValueIncreased(before, after, msg).reportIfFalse("poolValueIncreased postcondition"),
-                // TODO: the next is redundant with the previous one
-                nonDecreasingPools(before, after, msg.tokenPair).reportIfFalse("nonDecreasingPools postcondition"),
             }
 
             | PlaceLimitOrder(msg) => and {

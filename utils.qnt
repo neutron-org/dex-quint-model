@@ -495,11 +495,11 @@ module utils {
 
     // LP.2 in specification invariants
     // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
-    pure def computeAutoswapFee(residualAmounts: (int, int), tick1To0: TickIndex, fee: TickIndex): Dec =
+    pure def computeAutoswapFeeValue(residualAmounts: (int, int), token0SellTick: TickIndex, fee: TickIndex): Dec =
         val res0 : Dec = residualAmounts._1.fromInt()
         val res1 : Dec = residualAmounts._2.fromInt()
-        val factor: Dec = one.sub(priceFromTick(fee))
-        val price1To0: Dec = priceFromTick(tick1To0)
+        val factor: Dec = one.sub(priceFromTick(-fee))
+        val price1To0: Dec = BASE_PRICE.pow(-token0SellTick)
         add(
             res0.mul(factor),
             res1.mul(factor).mul(price1To0)
