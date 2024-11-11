@@ -265,7 +265,7 @@ module postconditions {
     /// LO.1: When limit orders are swapped through the pro-rata portion of the swap value will returnable to all participants via withdraws
     /// LO.2: When canceling a limit order the participants will receive their pro-rata share of any unused maker denom as well as their pro-rata share of all swap proceeds.
     /// Cancellations will not change the future withdraw or cancel outcomes for other participants.
-    pure def userGetsProRataPortion(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
+    pure def userGetsProRataPortionTaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
         // How much the user actually got
         pure val takerDenom = before.tranches.get(trancheKey).takerDenomination
         pure val withdrawnAmountTakerToken = after.coins.get(creator).get(takerDenom) - before.coins.get(creator).get(takerDenom)
@@ -283,6 +283,21 @@ module postconditions {
         pure val tolerance = swaps.size()
 
         abs(withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount)) <= tolerance
+    }
+
+    pure def userGetsProRataPortionMaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
+        // How much the user actually got
+        pure val makerDenom = before.tranches.get(trancheKey).makerDenomination
+        pure val withdrawnAmountMakerToken = after.coins.get(creator).get(makerDenom) - before.coins.get(creator).get(makerDenom)
+
+        // How much it should have gotten
+        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
+        pure val tranche = before.tranches.get(trancheKey)
+        pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)        
+
+        // allowing for rounding errors
+        val tolerance = 1
+        abs(withdrawnAmountMakerToken - proRataShare(tranche.reservesMaker)) <= tolerance
     }
 
     // Invariant: LP profit from their deposits
@@ -370,13 +385,13 @@ module postconditions {
 
             | CancelLimitOrder(msg) => and {
                 cancelLimitOrderStateChanges(before, after, msg).reportIfFalse("cancelLimitOrderStateChanges postcondition"),
-                userGetsProRataPortion(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortion postcondition"),
-
+                userGetsProRataPortionTaker(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortionTaker postcondition"),
+                userGetsProRataPortionMaker(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortionMaker postcondition"),
             }
 
             | WithdrawLimitOrder(msg) => all {
                 withdrawLimitOrderStateChanges(before, after, msg).reportIfFalse("withdrawLimitOrderStateChanges postcondition"),
-                userGetsProRataPortion(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortion postcondition"),
+                userGetsProRataPortionTaker(before, after, msg.creator, msg.trancheKey).reportIfFalse("userGetsProRataPortionTaker postcondition"),
             }
 
             | WithdrawPool(msg) => and {

@@ -596,7 +596,7 @@ module utils {
 
     // CANCEL RELATED FUNCTIONS
     pure def computeCancelAmountMakerToken(tranche: Tranche, usersShares: UsersTrancheShares): int =     
-        // @audit-info The calculation here is different (but equivalent) than in the spec. 
+        // @audit-info The calculation here is different (but equivalent) than the one in the spec. 
         // Are there perhaps some reasons to stick to the spec calculation?   
         val percentUnfilled = calculatePercentUnfilled(tranche)
         val sharesOwned = usersShares.sharesOwned
