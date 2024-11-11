@@ -21,6 +21,7 @@ module postconditions {
         val reservesAfter = after.pools.get(poolId).reserves
         val sharesBefore = before.pools.get(poolId).shares
         val sharesAfter = after.pools.get(poolId).shares
+        // corresponds to MLO 1.e
         val outAmounts = computeAmountsWithdrawnPool(reservesBefore, sharesBefore, msg.sharesAmount)
         and{
             // ** State changes validation **
@@ -117,7 +118,9 @@ module postconditions {
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = debug("tranchesUpdates: ", fulfilledOrderInfo.tranchesUpdates)
         val remainingAmount = debug("remaining amounot = ", fulfilledOrderInfo.remainingAmount)
+        val inAmount = msg.amountIn
         val outAmount = debug("outAmount = ", fulfilledOrderInfo.outAmount)
+        val usedAmount = debug("usedAmount: ", inAmount - remainingAmount)
 
         // A not fully filled fillOrKill: the state is not changed at all
         if (remainingAmount > 0 and msg.orderType == FillOrKill) 
@@ -128,6 +131,20 @@ module postconditions {
             validatePoolsUpdates(before, after, poolsUpdateInfo),
             validateTranchesUpdates(before, after, tranchesUpdateInfo),
             swapInternallyConsistent(msg, fulfilledOrderInfo),
+
+            // ** Specification invariants **
+            // Invariant Swap.1
+            val buyingPrice = priceFromTick(maxBuyTick)
+            // the amount I would get at my limit price
+            val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
+            // TLO 1.a
+            outAmount >= minAmount,
+            // TLO 1.b
+            inAmount >= usedAmount,
+            // This is the case of where remainingAmount was 0 (due to the if condition)
+            // The implication follows from the definition of outAmount, but spelling it
+            // out here for clarity
+            implies(msg.orderType == FillOrKill, outAmount == inAmount),
             
             // if there was still some extra amount, and we are not in the immediateOrCancel case, then it was added as a new tranche
             implies (
@@ -169,6 +186,8 @@ module postconditions {
             tokenOutGained == after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut),            
             val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
             tokenInSpent == before.coins.get(msg.creator).get(msg.tokenIn) - after.coins.get(msg.creator).get(msg.tokenIn)
+
+
   
         } 
 
@@ -205,7 +224,9 @@ module postconditions {
             val buyingPrice = priceFromTick(msg.limitPriceTick)
             // the amount I would get at my limit price
             val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
+            // TLO 1.a
             outAmount >= minAmount,
+            // TLO 1.b
             inAmount >= usedAmount,
             // // Invariant LP.3
             poolsUpdateInfo.keys().forall(id =>
