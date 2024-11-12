@@ -299,16 +299,16 @@ module baseDexEvolution {
     /// We make sure that the two cases of withdrawals actually happen through witness properties
     val noLossOnExhaustedTranches = state.tranchesShares.keys().forall(addr => {
         pure def noLoss(state: State, addr: Addr, key: TrancheKey): bool = and {
-            pure val depositedAmount = state.bookkeeping.tranches.deposits.get((addr, key))
+            pure val placedAmount = state.bookkeeping.tranches.placements.get((addr, key))
             pure val withdrewAmount = state.bookkeeping.tranches.withdrawals.getOrElse((addr, key), 0)
             pure val canceledAmounts = state.bookkeeping.tranches.cancelations.getOrElse((addr, key), (0, 0))
 
-            pure val totalDeposited = (depositedAmount, 0)
+            pure val totalPlaced = (placedAmount, 0)
             pure val totalWithdrew = (canceledAmounts._1, withdrewAmount + canceledAmounts._2)
 
-            pure val deposited = computeDepositValue(totalDeposited, key.sellTick)
+            pure val placedValue = computeDepositValue(totalPlaced, key.sellTick)
             pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick)
-            approx_gte(withdrew, deposited, fromInt(2))
+            approx_gte(withdrew, placedValue, fromInt(2))
         }
 
         val shareAccount = state.tranchesShares.get(addr)
