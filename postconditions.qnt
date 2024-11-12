@@ -274,7 +274,7 @@ module postconditions {
         pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
         pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
         pure val tranche = before.tranches.get(trancheKey)
-        pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
         pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
            acc + diff.takerReservesDiff
         })
@@ -282,7 +282,7 @@ module postconditions {
         // There can be up to one off-by-one error per swap
         pure val tolerance = swaps.size()
 
-        abs(withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount)) <= tolerance
+        abs(withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount).truncate()) <= tolerance
     }
 
     pure def userGetsProRataPortionMaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
@@ -293,11 +293,11 @@ module postconditions {
         // How much it should have gotten
         pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
         pure val tranche = before.tranches.get(trancheKey)
-        pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)        
+        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)        
 
         // allowing for rounding errors
         val tolerance = 1
-        abs(withdrawnAmountMakerToken - proRataShare(tranche.reservesMaker)) <= tolerance
+        abs(withdrawnAmountMakerToken - proRataShare(tranche.reservesMaker).truncate()) <= tolerance
     }
 
     // Invariant: LP profit from their deposits
