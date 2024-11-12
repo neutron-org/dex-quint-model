@@ -242,13 +242,13 @@ module postconditions {
             pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
             pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
             pure val tranche = before.tranches.get(msg.trancheKey)
-            pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+            pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
             pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
                 acc + diff.takerReservesDiff
             })
 
             // there can be up to one off-by-one error per swap
-            (withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
+            (withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount).truncate()).in((-swaps.size()).to(swaps.size()))
     }
 
     pure def cancelLimitOrderPostcondition(before: State, after: State, msg: CancelLimitOrderMsg): bool =
@@ -289,13 +289,13 @@ module postconditions {
             pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((msg.creator, msg.trancheKey), Set())
             pure val userShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
             pure val tranche = before.tranches.get(msg.trancheKey)
-            pure def proRataShare(x) = ((userShares.sharesOwned * x) / tranche.totalMaker)
+            pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
             pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
                 acc + diff.takerReservesDiff
             })
 
             // there can be up to one off-by-one error per swap
-            (withdrawAmountTakerToken - proRataShare(totalSwappedTakerAmount)).in((-swaps.size()).to(swaps.size()))
+            (withdrawAmountTakerToken - proRataShare(totalSwappedTakerAmount).truncate()).in((-swaps.size()).to(swaps.size()))
         }
 
     /// After each singlehopSwap, deposit, or placeLimitOrder, the values of
