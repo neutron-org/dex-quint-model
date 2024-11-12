@@ -52,7 +52,7 @@ module utils {
 
     pure val emptyTrackedValue: TrackedValue = {
         tranches: {
-            deposits: Map(),
+            placements: Map(),
             withdrawals: Map(),
             cancelations: Map(),
             swaps: Map(),

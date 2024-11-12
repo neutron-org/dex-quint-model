@@ -4,16 +4,6 @@ module bookkeeping {
     import utils.* from "utils"
     import types.* from "types"
 
-
-    pure val emptyTrackedValue: TrackedValue = {
-        tranches: {
-            placements: Map(),
-            withdrawals: Map(),
-            cancelations: Map(),
-            swaps: Map(),
-        }
-    }
-
     pure def trackTranchePlacement(t: TrackedValue, addr: Addr, key: Option[TrancheKey], amount: int): TrackedValue = {
         match key {
           | None => t
