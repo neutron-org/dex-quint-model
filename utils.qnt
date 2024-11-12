@@ -377,7 +377,7 @@ module utils {
     pure def tokenInSpentBasedOnOrderType(orderType: LimitOrderType, amountIn: int, remainingAmount: int): int = 
         match orderType {
             | GoodTillCancelled => amountIn
-            | FillOrKill => 0
+            | FillOrKill => if (remainingAmount > 0 ) 0 else amountIn
             | ImmediateOrCancel => amountIn - remainingAmount
             // not taking into account if the block is given in the past, assuming the code forbids this
             | GoodTillTime(_) => amountIn
@@ -602,6 +602,7 @@ module utils {
         val sharesOwned = usersShares.sharesOwned
         percentUnfilled.mulInt(sharesOwned).truncate()    
 
+    // OTHER HELPER FUNCTIONS
     pure def setByWithDefault(m: a -> b, k: a, op: (b) => b, default: b): a -> b = {
         if (m.has(k))
             m.setBy(k, op)
@@ -615,4 +616,32 @@ module utils {
 
     pure def reportIfFalse(cond: bool, name: str): bool =
         if (cond) true else q::debug(name, false)
+
+    // Returns total amount of all coins (at users, tranches, or pools) for a state
+    pure def totalCoins(s: State): Token -> int =
+        val coinsAtUsers = s.coins.keys().fold(
+            TOKENS.mapBy(token => 0),
+            (coinSummationMapping, user) => TOKENS.fold(
+                coinSummationMapping,
+                (acc, token) => acc.set(token, acc.get(token) + s.coins.get(user).get(token))
+            )                            
+        )
+        val updatedWithTranches = s.tranches.keys().fold(
+            coinsAtUsers,
+            (acc, key) => {
+                val tranche = s.tranches.get(key)
+                acc.setBy(tranche.makerDenomination, old => old + tranche.reservesMaker)
+                    .setBy(tranche.takerDenomination, old => old + tranche.reservesTaker)
+            }
+        )
+        val updatedWithPools = s.pools.keys().fold(
+            updatedWithTranches,
+            (acc, key) => {
+                val pool = s.pools.get(key)
+                acc
+                    .setBy(key.tokenPair._1, old => old + pool.reserves._1)
+                    .setBy(key.tokenPair._2, old => old + pool.reserves._2)
+            }
+        )
+        updatedWithPools
 }

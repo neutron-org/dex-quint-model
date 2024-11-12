@@ -318,6 +318,13 @@ module baseDexEvolution {
         })
     })
 
+    /* 
+    The total amount of coins in the system is always preserved
+     */
+    val coinsPreserved = 
+        val initCoins = totalCoins(initState)        
+        totalCoins(state) == initCoins
+
     /* WITNESS PROPERTIES */
     /* These invariants should be violated. If they are not, it means the model is not reaching important states */
 
@@ -355,5 +362,6 @@ module baseDexEvolution {
         nonNegativeTrancheAmounts.reportIfFalse("nonNegativeTrancheAmounts"),
         reservesImplyShares.reportIfFalse("reservesImplyShares"),
         noLossOnExhaustedTranches.reportIfFalse("noLossOnExhaustedTranches"),
+        coinsPreserved.reportIfFalse("coinsPreserved"),
     }
 }
