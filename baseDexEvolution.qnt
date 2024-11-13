@@ -308,6 +308,7 @@ module baseDexEvolution {
 
             pure val deposited = computeDepositValue(totalDeposited, key.sellTick)
             pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick)
+
             approx_gte(withdrew, deposited, fromInt(2))
         }
 
@@ -329,26 +330,26 @@ module baseDexEvolution {
     /* These invariants should be violated. If they are not, it means the model is not reaching important states */
 
     /// It should be possible to exhaust a tranche through cancelation
-    val noExhaustingThroughCancelation = state.tranchesShares.keys().forall(addr => {
+    val exhaustedTrancheThroughCancelation = state.tranchesShares.keys().exists(addr => {
         val shareAccount = state.tranchesShares.get(addr)
-        shareAccount.keys().forall(key => {
+        shareAccount.keys().exists(key => {
             val s = shareAccount.get(key)
             // When there is a cancelation, both of these are set to zero
-            not(s.sharesWithdrawn == 0 and s.sharesOwned == 0)
+            s.sharesWithdrawn == 0 and s.sharesOwned == 0
         })
     })
 
     /// It should be possible to exhaust a tranche through withdraws
-    val noExhaustingThroughWithdraw = state.tranchesShares.keys().forall(addr => {
+    val exhaustedTrancheThroughWithdraw = state.tranchesShares.keys().exists(addr => {
         val shareAccount = state.tranchesShares.get(addr)
-        shareAccount.keys().forall(key => {
+        shareAccount.keys().exists(key => {
             val s = shareAccount.get(key)
-            not(s.sharesWithdrawn == s.sharesOwned and s.sharesWithdrawn != 0)
+            s.sharesWithdrawn == s.sharesOwned and s.sharesWithdrawn != 0
         })
     })
 
-    val noSharedTranches = tuples(state.tranchesShares.keys(), state.tranchesShares.keys()).forall(((a, b)) =>
-        a != b implies state.tranchesShares.get(a).keys().intersect(state.tranchesShares.get(b).keys()) == Set()
+    val sharedTranches = tuples(state.tranchesShares.keys(), state.tranchesShares.keys()).exists(((a, b)) =>
+        a != b and state.tranchesShares.get(a).keys().intersect(state.tranchesShares.get(b).keys()) != Set()
     )
 
     val allInvariants = all {
