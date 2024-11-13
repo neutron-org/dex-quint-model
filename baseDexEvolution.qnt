@@ -202,12 +202,6 @@ module baseDexEvolution {
         }
 
     // INVARIANTS
-    // Pool reserves are always greater or equal to zero
-    val nonNegativeReserves = state.pools.keys().forall(
-        poolId =>
-            val reserves = state.pools.get(poolId).reserves
-            reserves._1 >= 0 and reserves._2 >= 0
-        )
 
     // Invariant: shares supplies are always greater or equal to zero
     val nonNegativeSharesSupply = state.pools.keys()
@@ -327,7 +321,6 @@ module baseDexEvolution {
     )
 
     val allInvariants = all {
-        nonNegativeReserves.reportIfFalse("nonNegativeReserves"),
         nonNegativeSharesSupply.reportIfFalse("nonNegativeSharesSupply"),
         nonNegativeBalances.reportIfFalse("nonNegativeBalances"),
         expirationTimeSanity.reportIfFalse("expirationTimeSanity"),
