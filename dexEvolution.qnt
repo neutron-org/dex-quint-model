@@ -1,6 +1,9 @@
 // -*- mode: Bluespec; -*-
 module dexEvolution {
+    import basicSpells.* from "lib/basicSpells"
+    import dec from "lib/dec"
     import types.* from "types"
+    import utils.* from "utils"
     import postconditions.* from "postconditions"
     import baseDexEvolution as base from "baseDexEvolution"
 
@@ -36,17 +39,18 @@ module dexEvolution {
 
     pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
       match message {
-        | DepositPool(msg) => depositPostcondition(before, after, msg)
-        | PlaceLimitOrder(msg) => placeLimitOrderPostcondition(before, after, msg)
+        | DepositPool(msg) => depositPostcondition(before, after, msg) and nonDecreasingPools(before, after, msg.tokenPair)
+        | PlaceLimitOrder(msg) => placeLimitOrderPostcondition(before, after, msg) and nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut))
         | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
         | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
         | WithdrawPool(msg) => withdrawPoolPostcondition(before, after, msg)
-        | Swap(msg) => singlehopSwapPostcondition(before, after, msg)
+        | Swap(msg) => singlehopSwapPostcondition(before, after, msg) and nonDecreasingPools(before, after, msg.tokenPair)
         | _ => true
       }
     }
 
     // INVARIANTS
+
     // Invariant: postconditions always hold
     val postconditions = postconditionOK
 }

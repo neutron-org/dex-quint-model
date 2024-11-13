@@ -4,6 +4,7 @@ module utils {
     import dec.* from "lib/dec"
     import types.* from "types"
     import consts.* from "consts"
+    import bookkeeping.* from "bookkeeping"
     import basicSpells.* from "lib/basicSpells"
 
     pure def debug(msg, expr) =
@@ -68,7 +69,8 @@ module utils {
             poolShares: CREATORS.mapBy(creator => Map()),
             pools: Map(),
             deposits: CREATORS.mapBy(creator => Map()),
-            poolWithdraws: CREATORS.mapBy(creator => Map())
+            poolWithdraws: CREATORS.mapBy(creator => Map()),
+            bookkeeping: emptyTrackedValue
         }
 
     // ----
@@ -371,9 +373,9 @@ module utils {
         }        
 
     pure def placeRemainingLimitOrderAmount(tranches: TrancheKey->Tranche, shares: Shares, msg: PlaceLimitOrderMsg, amount: int, expirationBlockTime: BlockTime)
-    : {tranches: TrancheKey->Tranche, tranchesShares: Shares} =
+    : { tranches: TrancheKey->Tranche, tranchesShares: Shares, key: Option[TrancheKey] } =
         
-        if (amount == 0) {tranches: tranches, tranchesShares: shares}
+        if (amount == 0) { tranches: tranches, tranchesShares: shares, key: None }
         else 
         // now it is reversed: the remaining amount of the tokenIn becomes a maker token of a new tranche
         val makerToken = msg.tokenIn
@@ -395,7 +397,7 @@ module utils {
                 creator,
                 (old => old.put(trancheKey, newShares))
             )
-            {tranches: updatedTranches, tranchesShares:updatedShares}
+            { tranches: updatedTranches, tranchesShares:updatedShares, key: Some(trancheKey) }
         // if we are adding a fully new tranche
         else                    
             val newTranche = {
@@ -417,7 +419,7 @@ module utils {
                     creator,
                     old => old.put(trancheKey, newShareAccount)
                 )
-            {tranches: updatedTranches, tranchesShares: updatedShares}
+            { tranches: updatedTranches, tranchesShares: updatedShares, key: Some(trancheKey) }
 
         tranchesAndSharesUpdate
 
