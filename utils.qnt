@@ -71,9 +71,7 @@ module utils {
         // val possibleTokenAccounts = setOfMaps(CREATORS, setOfMaps(TOKENS, INITIAL_CREATORS_BALANCES))
         // nondet initCoins = oneOf(possibleTokenAccounts)
         val bal = INITIAL_CREATOR_BALANCE_TEMP
-        val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, TOKENS.fold(
-            Map(), (acc2, t) => acc2.put(t, bal)
-        )))
+        val initCoins = CREATORS.mapBy(_ => TOKENS.mapBy(_ => INITIAL_CREATOR_BALANCE_TEMP))
 
         {
             tranches: Map(),

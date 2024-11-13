@@ -31,20 +31,13 @@ module baseDexEvolution {
 
     // ACTIONS
     action withdrawPoolAction(processResult: (Result, Message) => bool): bool = all {
-        // mapping from creators to sets of pools in which they have >0 share
-        val relevantCreatorsAndPools = state.poolShares.keys().fold(
-            Map(), // a map from creators to pools in which they have non-trivial stake
-            (acc, c) =>
-            val nonTrivialPools = state.poolShares.get(c).keys().filter(p => state.poolShares.get(c).get(p) > 0)
-            if (nonTrivialPools.size() > 0)
-                acc.put(c, nonTrivialPools)
-            else
-                acc
-        )
+        // tuples of from creators and pools in which they have >0 share
+        val relevantCreatorsAndPools = tuples(CREATORS, state.pools.keys()).filter(((c, p)) => state.poolShares.get(c).getOrElse(p, 0) > 0)
         all {
-            require(relevantCreatorsAndPools.keys().size() > 0),
-            nondet creator = oneOf(relevantCreatorsAndPools.keys())
-            nondet poolKey = oneOf(relevantCreatorsAndPools.get(creator))
+            require(relevantCreatorsAndPools != Set()),
+            nondet creatorAndPool = relevantCreatorsAndPools.oneOf()
+            val creator = creatorAndPool._1
+            val poolKey = creatorAndPool._2
             nondet amountToWithdraw = oneOf(1.to(state.poolShares.get(creator).get(poolKey)))
             val msg = {
                 creator: creator,
@@ -61,26 +54,15 @@ module baseDexEvolution {
 
     action depositAction(processResult: (Result, Message) => bool): bool =
         nondet doAutoswap = oneOf(Set(true, false))
-        // a set of {creator: Addr, poolKey: PoolKey} records containing all the pools whose tokens are
-        // the ones of which the creator has >0 coins. We do so by iterating first over creators, and then
-        // over all token pairs, and checking if the creator has >0 coins in at least one the pair tokens.
+        // a set of (Addr, PoolId) tuples containing all the pools whose tokens are
+        // the ones of which the creator has >0 coins.
         // (Otherwise, the creator cannot deposit since it has no coins to deposit)
-        val creatorsAndPairs = CREATORS.fold(
-            Set(),
-            (acc, c) => acc.union(
-                TOKEN_PAIRS.fold(
-                    Set(),
-                    (acc2, tokenPair) =>
-                    if (state.coins.get(c).getOrElse(tokenPair._1, 0) > 0 or state.coins.get(c).getOrElse(tokenPair._2, 0) > 0)
-                        acc2.union(Set({creator: c, tokenPair: tokenPair}))
-                    else
-                        acc2
-                )
-            )
-        )
+        val creatorsAndPairs = tuples(CREATORS, TOKEN_PAIRS).filter(((c, tp)) => {
+          state.coins.get(c).get(tp._1) > 0 or state.coins.get(c).get(tp._2) > 0
+        })
         nondet creatorAndPair = oneOf(creatorsAndPairs)
-        val tokenPair = creatorAndPair.tokenPair
-        val c = creatorAndPair.creator
+        val c = creatorAndPair._1
+        val tokenPair = creatorAndPair._2
         nondet fee = oneOf(0.to(MAX_FEE))
         nondet tick = oneOf(TICKS)
         nondet amountTokenX = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
