@@ -268,21 +268,16 @@ module postconditions {
     pure def userGetsProRataPortionTaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
         // How much the user actually got
         pure val takerDenom = before.tranches.get(trancheKey).takerDenomination
-        pure val withdrawnAmountTakerToken = after.coins.get(creator).get(takerDenom) - before.coins.get(creator).get(takerDenom)
+        pure val withdrawnAmountTakerToken = debug("withdrawnAMountTaker: ", after.coins.get(creator).get(takerDenom) - before.coins.get(creator).get(takerDenom))
 
         // How much it should have gotten
         pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
-        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
-        pure val tranche = before.tranches.get(trancheKey)
-        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
-        pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
-           acc + diff.takerReservesDiff
-        })
-
         // There can be up to one off-by-one error per swap
-        pure val tolerance = swaps.size()
-
-        abs(withdrawnAmountTakerToken - proRataShare(totalSwappedTakerAmount).truncate()) <= tolerance
+        // Adding multiplication by 10 to allow for multiple roundings in calculations  per single swap.
+        pure val tolerance = debug("tolerance", swaps.size()*10)
+        pure val expected = debug("expected: ", before.bookkeeping.tranches.proceedsToBeWithdrawn.getOrElse((creator, trancheKey), 0))
+        pure val diff = debug("diff", abs(withdrawnAmountTakerToken - expected))
+        diff <= tolerance
     }
 
     pure def userGetsProRataPortionMaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {

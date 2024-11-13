@@ -56,6 +56,7 @@ module utils {
             withdrawals: Map(),
             cancelations: Map(),
             swaps: Map(),
+            proceedsToBeWithdrawn: Map()
         },
         pools: {
             deposits: Map(),

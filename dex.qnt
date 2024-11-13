@@ -146,7 +146,7 @@ module Dex {
             coins: state.coins.set(msg.creator, updatedUserCoins),
             bookkeeping: state.bookkeeping
               .trackTrancheDeposit(msg.creator, tranchesSharesUpdate.key, remainingAmount)
-              .trackSwap(state.tranchesShares, state.poolShares, fulfilledOrderInfo),
+              .trackSwap(state.tranches, state.tranchesShares,  state.poolShares, fulfilledOrderInfo),
             ...state
         })
 
@@ -182,7 +182,7 @@ module Dex {
             coins: state.coins.set(msg.creator, updatedCoins),
             pools: updatedPools,
             tranches: updatedTranches,
-            bookkeeping: state.bookkeeping.trackSwap(state.tranchesShares, state.poolShares, fulfilledOrderInfo),
+            bookkeeping: state.bookkeeping.trackSwap(state.tranches, state.tranchesShares, state.poolShares, fulfilledOrderInfo),
             ...state
         })
     }

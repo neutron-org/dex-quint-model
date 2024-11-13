@@ -3,6 +3,7 @@ module bookkeeping {
     import basicSpells.* from "lib/basicSpells"
     import utils.* from "utils"
     import types.* from "types"
+    import dec.* from "lib/dec"
 
     pure def trackTrancheDeposit(t: TrackedValue, addr: Addr, key: Option[TrancheKey], amount: int): TrackedValue = {
         match key {
@@ -30,8 +31,9 @@ module bookkeeping {
 
         // Reset swaps being tracked by for this address and tranche key
         pure val newSwaps = t.tranches.swaps.put((addr, key), Set())
+        pure val newProceeds = t.tranches.proceedsToBeWithdrawn.put((addr, key), 0)
 
-        { ...t, tranches: { ...t.tranches, withdrawals: newWithdrawals, swaps: newSwaps } }
+        { ...t, tranches: { ...t.tranches, withdrawals: newWithdrawals, swaps: newSwaps, proceedsToBeWithdrawn: newProceeds } }
     }
 
     pure def trackTrancheCancelation(t: TrackedValue, addr: Addr, key: TrancheKey, makerAmount: int, takerAmount: int): TrackedValue = {
@@ -42,7 +44,11 @@ module bookkeeping {
             else
                 cancelations.put((addr, key), (makerAmount, takerAmount))
 
-        { ...t, tranches: { ...t.tranches, cancelations: newCancelations } }
+        // Reset swaps being tracked by for this address and tranche key
+        pure val newSwaps = t.tranches.swaps.put((addr, key), Set())
+        pure val newProceeds = t.tranches.proceedsToBeWithdrawn.put((addr, key), 0)
+
+        { ...t, tranches: { ...t.tranches, cancelations: newCancelations, swaps: newSwaps, proceedsToBeWithdrawn: newProceeds } }
     }
 
     pure def trackPoolDeposit(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), swappedAmounts: Option[(int, int)], poolShares: Addr -> PoolId -> int): TrackedValue = {
@@ -84,7 +90,7 @@ module bookkeeping {
         { ...t, pools: { ...t.pools, withdrawals: newWithdrawals, swaps: newSwaps } }
     }
 
-    pure def trackSwap(t: TrackedValue, tranchesShares: Shares, poolShares: Addr -> PoolId -> int, swapUpdate: SwapUpdateInfo): TrackedValue = {
+    pure def trackSwap(t: TrackedValue, tranches: TrancheKey->Tranche, tranchesShares: Shares, poolShares: Addr -> PoolId -> int, swapUpdate: SwapUpdateInfo): TrackedValue = {
         pure val newTrancheSwaps = swapUpdate.tranchesUpdates.keys().fold(t.tranches.swaps, (swaps, key) => {
             pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
             tranchesShares.keys().fold(swaps, (swaps, addr) => {
@@ -96,6 +102,25 @@ module bookkeeping {
                      }
                 } else {
                     swaps
+                }
+            })
+        })
+        
+        pure val newProceeds = swapUpdate.tranchesUpdates.keys().fold(t.tranches.proceedsToBeWithdrawn, (proceeds, key) => {
+            pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
+            tranchesShares.keys().fold(proceeds, (proceeds, addr) => {
+                val userShares = tranchesShares.get(addr).get(key)
+                val tranche = tranches.get(key)
+                pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
+                if (tranchesShares.get(addr).keys().contains(key)) {
+                    val usersPart = proRataShare(diffForKey.takerReservesDiff).truncate()
+                     if (proceeds.has((addr, key))) {
+                         proceeds.setBy((addr, key), s => s + usersPart)
+                     } else {
+                         proceeds.put((addr, key), usersPart)
+                     }
+                } else {
+                    proceeds
                 }
             })
         })
@@ -115,6 +140,6 @@ module bookkeeping {
             })
         })
 
-        { tranches: { ...t.tranches, swaps: newTrancheSwaps }, pools: { ...t.pools, swaps: newPoolSwaps } }
+        { tranches: { ...t.tranches, swaps: newTrancheSwaps, proceedsToBeWithdrawn: newProceeds }, pools: { ...t.pools, swaps: newPoolSwaps } }
     }
 }
