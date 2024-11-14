@@ -51,7 +51,7 @@ module postconditions {
        val sharesAfter = after.pools.get(poolId).shares
        // Deposit and shares computation considering the optional autoswap
        val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
-       val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+       val residualAmounts = calcAutoswapAmount(amounts, reservesBefore, token0SellTick)
        val inAmounts = if (msg.autoswap) amounts else inAmountsBeforeAutoswap
        val autoswapFee = if (msg.autoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, token0SellTick, autoswapFee)
@@ -272,6 +272,13 @@ module postconditions {
 
         // How much it should have gotten
         pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
+        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
+        pure val tranche = before.tranches.get(trancheKey)
+        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
+        pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
+           acc + diff.takerReservesDiff
+        })
+
         // There can be up to one off-by-one error per swap
         // Adding multiplication by 10 to allow for multiple roundings in calculations  per single swap.
         pure val tolerance = debug("tolerance", swaps.size()*10)
@@ -302,24 +309,20 @@ module postconditions {
        after.bookkeeping.pools.deposits.keys().forall(((creator, poolId)) =>
           // If the user has withdrawn all their shares
           after.poolShares.get(creator).get(poolId) == 0 implies
-             val deposited = before.bookkeeping.pools.deposits.getOrElse((creator, poolId), (0, 0))
+             val depositedValue = before.bookkeeping.pools.depositValues.getOrElse((creator, poolId), 0)
              val withdrawn = after.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
              val swaps = before.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
              // If there were swaps, the user withdrew more value than deposited
              // TODO: We could maybe calculate the exact amount here from the swapped amounts as we do for tranches
              // Actually that might not be possible with the current tracking of swaps since there are partial withdraws for pools
             //  TODO: If there were swaps, the user collected also the fee on those swaps
-             if (swaps != Set()) approx_gt(
-                computeDepositValue(withdrawn, poolId.tick),
-                computeDepositValue(deposited, poolId.tick),
-                fromInt(TOLERANCE)
-             )
+            val totalWithdrawn = debug("totalWithdrawn: ", computeDepositValue(withdrawn, poolId.tick).truncate())
+            val totalDeposited = debug("totalDeposited: ", depositedValue)
+             if (swaps != Set()) totalWithdrawn + TOLERANCE >= totalDeposited
              // Otherwise, the user withdrew no less value than deposited
-             else approxEqualDec(
-                computeDepositValue(withdrawn, poolId.tick),
-                computeDepositValue(deposited, poolId.tick),
-                fromInt(TOLERANCE)
-             )
+             else 
+                abs(totalWithdrawn - totalDeposited) <= TOLERANCE
+                             
        )
 
     /// LP.5: When a single user withdraws 100% of their shares from the pool
