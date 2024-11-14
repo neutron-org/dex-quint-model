@@ -2,7 +2,8 @@
 module baseDexEvolution {
     import dec.* from "lib/dec"
     import types.* from "types"
-    import consts.* from "consts"
+    // import consts.* from "consts"\
+    import restrictedConsts.* from "restrictedConsts"
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
@@ -81,7 +82,7 @@ module baseDexEvolution {
         nondet creatorAndPair = oneOf(creatorsAndPairs)
         val tokenPair = creatorAndPair.tokenPair
         val c = creatorAndPair.creator
-        nondet fee = oneOf(0.to(MAX_FEE))
+        nondet fee = oneOf(FEES)
         nondet tick = oneOf(TICKS)
         nondet amountTokenX = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
         nondet amountTokenY = oneOf(0.to(state.coins.get(c).get(tokenPair._2)))
