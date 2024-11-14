@@ -99,7 +99,7 @@ module baseDexEvolution {
 
         nondet tick = oneOf(TICKS)
         nondet tokenIn = oneOf(TOKENS)
-        nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn))
+        nondet tokenOut = oneOf(TOKENS.exclude(Set(tokenIn)))
 
         // We allow here to select 0 (so as to avoid oneOf on an empty set), but 0 value is disallowed
         // in the requirement below
@@ -128,13 +128,13 @@ module baseDexEvolution {
     action singlehopSwapAction(processResult: (Result, Message) => bool): bool = all {
         require(state.pools.keys().size() > 0),
         // We will model swapping only of token pairs for which pools already exist.
+        nondet poolId = state.pools.keys().oneOf()
         // Since pools are indexed by sorted pairs, we need to be able to create the opposite pair, too
-        nondet pair = state.pools.keys().map(k => Set(k.tokenPair, k.tokenPair.reverse())).flatten().oneOf()
+        nondet pair = Set(poolId.tokenPair, poolId.tokenPair.reverse()).oneOf()
 
         nondet creator = oneOf(CREATORS)
 
-        val inTokenTotalAmount = state.coins.get((creator, pair._1))
-        nondet amount = 0.to(inTokenTotalAmount).oneOf()
+        nondet amount = 0.to(state.coins.get((creator, pair._1))).oneOf()
         nondet tick = oneOf(TICKS)
         val msg = {
             creator: creator,
@@ -149,22 +149,21 @@ module baseDexEvolution {
     action withdrawLimitOrderAction(processResult: (Result, Message) => bool): bool =
         val creatorKeyTuples = nonTrivialTranchesOwners(state.tranchesShares)
         all {
-            require(size(creatorKeyTuples) > 0),
+            require(creatorKeyTuples.size() > 0),
             nondet chosenTuple = oneOf(creatorKeyTuples)
-            val creator = chosenTuple._1
-            val trancheKey = chosenTuple._2
             val msg = {
-                creator: creator,
-                trancheKey: trancheKey
+                creator: chosenTuple._1,
+                trancheKey: chosenTuple._2
             }
+
             all {
-                require(state.tranches.has(trancheKey)),
+                require(state.tranches.has(msg.trancheKey)),
                 // we are not allowing withdrawing from fresh tranches (there was no trading)
                 // @audit-info Should we handle the error at this level or should we let individual functions handle it?
                 // This way is cleaner. The problem is that the simulation will not try at all then those cases where a withdraw on a non-fresh
                 // tranche is attempted.
                 // maybe it makes sense to use a `require` here at places where we can be confident that the code will enforce those assumptions
-                require(not(state.tranches.get(trancheKey).isFresh)),
+                require(not(state.tranches.get(msg.trancheKey).isFresh)),
 
                 val result = withdrawLimitOrder(state, msg)
                 processResult(result, WithdrawLimitOrder(msg))
