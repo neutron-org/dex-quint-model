@@ -1,18 +1,15 @@
 // -*- mode: Bluespec; -*-
-module consts {
+module restrictedConsts {
     import types.* from "types"
     import dec.* from "lib/dec"
 
     //  Helper vals
-    pure val CREATORS: Set[Addr] = Set("Alice", "Bob", "Carol")
-    // pure val CREATORS: Set[Addr] = Set("Alice", "Bob")
-    pure val INITIAL_CREATORS_BALANCES: Set[int] = Set(1000, 500)
+    pure val CREATORS: Set[Addr] = Set("Alice", "Bob")
+    // pure val INITIAL_CREATORS_BALANCES: Set[int] = Set(1000, 500)
     pure val INITIAL_CREATOR_BALANCE_TEMP: int = 10000
     pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled, ImmediateOrCancel, FillOrKill, JustInTime, GoodTillTime(-1))
-    // pure val ORDER_TYPES: Set[LimitOrderType] = Set(GoodTillCancelled)
     
-    pure val TOKENS: Set[Token] = Set("A", "B", "C")
-    // pure val TOKENS: Set[Token] = Set("A", "B")
+    pure val TOKENS: Set[Token] = Set("A", "B")
     pure val TOKEN_PAIRS: Set[TokenPair] = tuples(TOKENS, TOKENS).filter(x => x._1 != x._2)
     pure val TOKEN_NUM_VALUES: Token -> int = Map("A" -> 0, "B" -> 1, "C" -> 2)
     pure val BASE_PRICE: Dec = (10001, 10000)
@@ -23,7 +20,10 @@ module consts {
     // This value is taken from neutron/x/dex/types/price.go#L20-L20
     pure val MAX_TICK = 559680
     pure val MAX_FEE = 100
-    pure val TICKS: Set[TickIndex] = Set(-1000, -999, 999, 1000).union((-10).to(10)).union(((-100).to(-90))).union(90.to(100))
+    // pure val FEES = 0.to(MAX_FEE)
+    pure val FEES = Set(0, 20000, 10, 50)
+    // pure val TICKS: Set[TickIndex] = Set(-1000, -999, 999, 1000).union((-10).to(10)).union(((-100).to(-90))).union(90.to(100))
+    pure val TICKS = Set(0, 20000, 100)
     pure val MAX_AMOUNT = 10000
 
     pure val DEBUG_ENABLED = true
