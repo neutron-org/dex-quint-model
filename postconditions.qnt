@@ -272,6 +272,13 @@ module postconditions {
 
         // How much it should have gotten
         pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
+        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
+        pure val tranche = before.tranches.get(trancheKey)
+        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
+        pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
+           acc + diff.takerReservesDiff
+        })
+
         // There can be up to one off-by-one error per swap
         // Adding multiplication by 10 to allow for multiple roundings in calculations  per single swap.
         pure val tolerance = debug("tolerance", swaps.size()*10)
