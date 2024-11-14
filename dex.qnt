@@ -49,7 +49,8 @@ module Dex {
         if (isPoolBehindEnemyLines(state, pair, token0SellTick, msg.fee, amounts)) { state: state, error: "Pool behind enemy lines" } else
         
         val poolId = getPoolId(pair, token0SellTick, msg.fee)
-        val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
+        val pool = state.pools.getOrElse(poolId, emptyPool)
+
         val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
         // the amounots that need to be swapped
         val residualAmounts = calcAutoswapAmount(amounts, pool.reserves, token0SellTick)
@@ -60,14 +61,10 @@ module Dex {
 
         if (outShares == 0) { state: state, error: "No shares created" } else
 
-        // updating the pool shares
-        val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
-        val updatedShares = state.poolShares.put(
-            msg.creator,
-            state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
-        )
+        val updatedShares = state.poolShares.setBy(msg.creator, shares => {
+            shares.setByWithDefault(poolId, s => s + outShares, 0)
+        })
 
-        // updating the pools        
         val updatedPools = state.pools.put(
             poolId,
             {
@@ -75,18 +72,17 @@ module Dex {
                 shares: pool.shares + outShares
             }
         )                
-        val updatedCreatorCoins = state.coins.get(msg.creator)
-            .setBy(pair._1, old => old - inAmounts._1)
-            .setBy(pair._2, old => old - inAmounts._2)
-        
-        val depositedValue = computeDepositValue(inAmounts, token0SellTick)
-        val depositedValueWithoutFee = sub(depositedValue, autoswapFeeValue).truncate()
+        val updatedCoins = state.coins.setBy(msg.creator, coins => {
+            coins
+                .setBy(pair._1, old => old - inAmounts._1)
+                .setBy(pair._2, old => old - inAmounts._2)
+        })
 
         ok({
             poolShares: updatedShares,
             pools: updatedPools,
-            coins: state.coins.set(msg.creator, updatedCreatorCoins),
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares, depositedValueWithoutFee),
+            coins: updatedCoins,
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue),
             ...state
         })
     }
