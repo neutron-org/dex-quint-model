@@ -45,7 +45,9 @@ module utils {
 
     pure def priceFromTick(tick: int): Dec =
         BASE_PRICE.pow(tick)
-    
+
+    pure def reverse(tokenPair: (str, str)): (str, str) = (tokenPair._2, tokenPair._1)
+
     pure def ok(state: State): Result = {state: state, error: "nil"}
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
@@ -67,21 +69,15 @@ module utils {
     }
 
 
-    pure def initState: State =
-        val bal = INITIAL_CREATOR_BALANCE
-        val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, TOKENS.fold(
-            Map(), (acc2, t) => acc2.put(t, bal)
-        )))
-
-        {
-            tranches: Map(),
-            coins: initCoins,
-            tranchesShares: CREATORS.mapBy(creator => Map()),
-            blockNumber: 0,
-            poolShares: CREATORS.mapBy(creator => Map()),
-            pools: Map(),
-            bookkeeping: emptyTrackedValue
-        }
+    pure def initState: State = {
+        tranches: Map(),
+        coins: tuples(CREATORS, TOKENS).mapBy(_ => INITIAL_CREATOR_BALANCE),
+        tranchesShares: CREATORS.mapBy(creator => Map()),
+        blockNumber: 0,
+        poolShares: CREATORS.mapBy(creator => Map()),
+        pools: Map(),
+        bookkeeping: emptyTrackedValue
+    }
 
     // ----
 
@@ -639,11 +635,9 @@ module utils {
     pure def totalCoins(s: State): Token -> int =
         val coinsAtUsers = s.coins.keys().fold(
             TOKENS.mapBy(token => 0),
-            (coinSummationMapping, user) => TOKENS.fold(
-                coinSummationMapping,
-                (acc, token) => acc.set(token, acc.get(token) + s.coins.get(user).get(token))
-            )                            
+            (acc, key) => acc.setBy(key._2, amount => amount + s.coins.get(key))
         )
+
         val updatedWithTranches = s.tranches.keys().fold(
             coinsAtUsers,
             (acc, key) => {

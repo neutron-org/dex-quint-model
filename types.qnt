@@ -83,8 +83,7 @@ module types {
     }
 
     // Coins captures the balances of all the users in the system
-    type Coins = Addr -> TokenAccount
-    type TokenAccount = Token -> int
+    type Coins = (Addr, Token) -> int
     type Token = str
 
     // we model Time as int. The special value -1 will denote that the time is None

@@ -27,8 +27,8 @@ module postconditions {
           reservesAfter._2 == reservesBefore._2 - outAmounts._2,
           reservesAfter._2 >= 0,
           // Coins are transferred
-          after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) + outAmounts._1,
-          after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) + outAmounts._2,
+          after.coins.get((msg.creator, pair._1)) == before.coins.get((msg.creator, pair._1)) + outAmounts._1,
+          after.coins.get((msg.creator, pair._2)) == before.coins.get((msg.creator, pair._2)) + outAmounts._2,
           // Shares are burned
           // We assume that we do not remove empty shares
           after.poolShares.get(msg.creator).get(poolId) >= 0,
@@ -65,9 +65,9 @@ module postconditions {
           reservesAfter._2 == reservesBefore._2 + inAmounts._2,
 
           // Coins are transferred
-          after.coins.get(msg.creator).get(pair._1) >= 0 and after.coins.get(msg.creator).get(pair._2) >= 0,
-          after.coins.get(msg.creator).get(pair._1) == before.coins.get(msg.creator).get(pair._1) - inAmounts._1,
-          after.coins.get(msg.creator).get(pair._2) == before.coins.get(msg.creator).get(pair._2) - inAmounts._2,
+          after.coins.get((msg.creator, pair._1)) >= 0 and after.coins.get((msg.creator, pair._2)) >= 0,
+          after.coins.get((msg.creator, pair._1)) == before.coins.get((msg.creator, pair._1)) - inAmounts._1,
+          after.coins.get((msg.creator, pair._2)) == before.coins.get((msg.creator, pair._2)) - inAmounts._2,
 
           // Shares are minted
           after.poolShares.get(msg.creator).has(poolId),
@@ -115,7 +115,7 @@ module postconditions {
           // if there was still some extra amount, and we are not in the immediateOrCancel case, then it was added as a new tranche
           remainingAmount > 0 and not(msg.orderType == ImmediateOrCancel) implies (
              val userGotRest = if (msg.orderType == ImmediateOrCancel) outAmount else 0
-             val userDiffOut = after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut)
+             val userDiffOut = after.coins.get((msg.creator, msg.tokenOut)) - before.coins.get((msg.creator, msg.tokenOut))
              val makerToken = msg.tokenIn
              val takerToken = msg.tokenOut
              val blockExpirationTime = match msg.orderType {
@@ -148,9 +148,9 @@ module postconditions {
 
           // checking that the user's amount got updated correctly
           val tokenOutGained = outAmount
-          tokenOutGained == after.coins.get(msg.creator).get(msg.tokenOut) - before.coins.get(msg.creator).get(msg.tokenOut),
+          tokenOutGained == after.coins.get((msg.creator, msg.tokenOut)) - before.coins.get((msg.creator, msg.tokenOut)),
           val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
-          tokenInSpent == before.coins.get(msg.creator).get(msg.tokenIn) - after.coins.get(msg.creator).get(msg.tokenIn)
+          tokenInSpent == before.coins.get((msg.creator, msg.tokenIn)) - after.coins.get((msg.creator, msg.tokenIn))
        }
 
     pure def singlehopSwapStateChanges(before: State, after: State, msg: SwapMsg): bool =
@@ -171,8 +171,8 @@ module postconditions {
 
        and {
           // Coins are transferred
-          after.coins.get(msg.creator).get(msg.tokenPair._1) == before.coins.get(msg.creator).get(msg.tokenPair._1) - usedAmount,
-          after.coins.get(msg.creator).get(msg.tokenPair._2) == before.coins.get(msg.creator).get(msg.tokenPair._2) + outAmount,
+          after.coins.get((msg.creator, msg.tokenPair._1)) == before.coins.get((msg.creator, msg.tokenPair._1)) - usedAmount,
+          after.coins.get((msg.creator, msg.tokenPair._2)) == before.coins.get((msg.creator, msg.tokenPair._2)) + outAmount,
 
           // Reserves are updated
           validatePoolsUpdates(before, after, poolsUpdateInfo),
@@ -196,8 +196,8 @@ module postconditions {
         and {
            // the user's taker balance has increased for what was withdrawn
            withdrawnAmountTakerToken ==
-              after.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination) -
-              before.coins.get(msg.creator).get(before.tranches.get(msg.trancheKey).takerDenomination),
+              after.coins.get((msg.creator, before.tranches.get(msg.trancheKey).takerDenomination)) -
+              before.coins.get((msg.creator, before.tranches.get(msg.trancheKey).takerDenomination)),
 
            // the reserves has decreased for what was withdrawn
            withdrawnAmountTakerToken ==
@@ -221,8 +221,8 @@ module postconditions {
        and {
           // the user's balance has increased for what was cancelled
           cancelAmountOutMakerToken ==
-          after.coins.get(msg.creator).get(tranche_before.makerDenomination) -
-          before.coins.get(msg.creator).get(tranche_before.makerDenomination),
+          after.coins.get((msg.creator, tranche_before.makerDenomination)) -
+          before.coins.get((msg.creator, tranche_before.makerDenomination)),
 
           // the totalMaker has decreased for what was cancelled
           users_tranches_shares_before.sharesOwned ==
@@ -233,8 +233,8 @@ module postconditions {
           // user received their fair amount of maker tokens back
           // the user's taker token balance has increased for what was withdrawn when cancelling
           withdrawAmountTakerToken ==
-             after.coins.get(msg.creator).get(tranche_before.takerDenomination) -
-             before.coins.get(msg.creator).get(tranche_before.takerDenomination),
+             after.coins.get((msg.creator, tranche_before.takerDenomination)) -
+             before.coins.get((msg.creator, tranche_before.takerDenomination)),
 
           // the totalTaker has decreased for what was cancelled
           withdrawAmountTakerToken ==
@@ -250,8 +250,8 @@ module postconditions {
     /// Swap.1: When a user swaps, their limit price is honored
     pure def swapLimitPriceIsHonored(before: State, after: State, msg: SwapMsg): bool = {
        pure val buyingPrice = priceFromTick(msg.limitPriceTick)
-       pure val usedAmount = after.coins.get(msg.creator).get(msg.tokenPair._1) - before.coins.get(msg.creator).get(msg.tokenPair._1)
-       pure val outAmount = after.coins.get(msg.creator).get(msg.tokenPair._2) - before.coins.get(msg.creator).get(msg.tokenPair._2)
+       pure val usedAmount = after.coins.get((msg.creator, msg.tokenPair._1)) - before.coins.get((msg.creator, msg.tokenPair._1))
+       pure val outAmount = after.coins.get((msg.creator, msg.tokenPair._2)) - before.coins.get((msg.creator, msg.tokenPair._2))
        // The amount I would get at my limit price
        val minAmount = intDivDec(usedAmount, buyingPrice).truncate()
        outAmount >= minAmount
@@ -266,7 +266,7 @@ module postconditions {
     pure def userGetsProRataPortionTaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
         // How much the user actually got
         pure val takerDenom = before.tranches.get(trancheKey).takerDenomination
-        pure val withdrawnAmountTakerToken = debug("withdrawnAMountTaker: ", after.coins.get(creator).get(takerDenom) - before.coins.get(creator).get(takerDenom))
+        pure val withdrawnAmountTakerToken = after.coins.get((creator, takerDenom)) - before.coins.get((creator, takerDenom))
 
         // How much it should have gotten
         pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
@@ -288,7 +288,7 @@ module postconditions {
     pure def userGetsProRataPortionMaker(before: State, after: State, creator: Addr, trancheKey: TrancheKey): bool = {
         // How much the user actually got
         pure val makerDenom = before.tranches.get(trancheKey).makerDenomination
-        pure val withdrawnAmountMakerToken = after.coins.get(creator).get(makerDenom) - before.coins.get(creator).get(makerDenom)
+        pure val withdrawnAmountMakerToken = after.coins.get((creator, makerDenom)) - before.coins.get((creator, makerDenom))
 
         // How much it should have gotten
         pure val userShares = before.tranchesShares.get(creator).get(trancheKey)

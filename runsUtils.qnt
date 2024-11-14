@@ -37,8 +37,8 @@ module runsUtils {
     }
 
     pure def coinsGained(before: State, after: State, creator: Addr, token: Token): int = {
-        val beforeBalance = before.coins.get(creator).get(token)
-        val afterBalance = after.coins.get(creator).get(token)
+        val beforeBalance = before.coins.get((creator, token))
+        val afterBalance = after.coins.get((creator, token))
         afterBalance - beforeBalance
     }
 

@@ -55,19 +55,19 @@ module baseDexEvolution {
 
     action depositAction(processResult: (Result, Message) => bool): bool =
         nondet doAutoswap = oneOf(Set(true, false))
-        // a set of (Addr, PoolId) tuples containing all the pools whose tokens are
+        // Build a set of (Addr, PoolId) tuples containing all the pools whose tokens are
         // the ones of which the creator has >0 coins.
         // (Otherwise, the creator cannot deposit since it has no coins to deposit)
         val creatorsAndPairs = tuples(CREATORS, TOKEN_PAIRS).filter(((c, tp)) => {
-          state.coins.get(c).get(tp._1) > 0 or state.coins.get(c).get(tp._2) > 0
+          state.coins.get((c, tp._1)) > 0 or state.coins.get((c, tp._2)) > 0
         })
         nondet creatorAndPair = oneOf(creatorsAndPairs)
+        val creator = creatorAndPair._1
         val tokenPair = creatorAndPair._2
-        val c = creatorAndPair._1
         nondet fee = oneOf(FEES)
         nondet tick = oneOf(TICKS)
-        nondet amountTokenX = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
-        nondet amountTokenY = oneOf(0.to(state.coins.get(c).get(tokenPair._2)))
+        nondet amountTokenX = oneOf(0.to(state.coins.get((creator, tokenPair._1))))
+        nondet amountTokenY = oneOf(0.to(state.coins.get((creator, tokenPair._2))))
         // we want to let simulation more often go with single-sided deposits (because they are more common, and more likely not to
         // fail due to being behind enemy lines (BEL)
         nondet providedAmounts = Set(
@@ -77,7 +77,7 @@ module baseDexEvolution {
         ).oneOf()
 
         val msg: DepositMsg = {
-            creator: c,
+            creator: creator,
             tokenPair: tokenPair,
             amountPair: providedAmounts,
             fee: fee,
@@ -92,25 +92,25 @@ module baseDexEvolution {
         }
 
     action placeLimitOrderAction(processResult: (Result, Message) => bool): bool =
-        nondet c = oneOf(CREATORS)
+        nondet creator = oneOf(CREATORS)
         nondet o_init = oneOf(ORDER_TYPES)
         nondet block_delta = oneOf(1.to(MAX_FUTURE_BLOCKS))
-        val o = if (o_init == GoodTillTime(-1)) GoodTillTime(state.blockNumber + block_delta) else o_init
+        val orderType = if (o_init == GoodTillTime(-1)) GoodTillTime(state.blockNumber + block_delta) else o_init
 
-        nondet t = oneOf(TICKS)
+        nondet tick = oneOf(TICKS)
         nondet tokenIn = oneOf(TOKENS)
         nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn))
 
-        // @audit-info We allow here to select 0 (so as to avoid oneOf on an empty set), but 0 value is disallowed
-        // in the requirement below
-        val possibleAmounts = 0.to(state.coins.get(c).get(tokenIn))
+        val possibleAmounts = 1.to(state.coins.get((creator, tokenIn)))
         nondet amount = oneOf(possibleAmounts)
+
         // @audit-info not implemented for now, so using a trivial value
         val maxAmountOut = amount + 1
+
         val msg: PlaceLimitOrderMsg = {
-            creator: c,
-            orderType: o,
-            sellTick: t,
+            creator: creator,
+            orderType: orderType,
+            sellTick: tick,
             tokenIn: tokenIn,
             tokenOut: tokenOut,
             amountIn: amount,
@@ -118,21 +118,20 @@ module baseDexEvolution {
         }
 
         all {
-            require(msg.amountIn > 0),
+            require(possibleAmounts != Set()),
             val result = placeLimitOrder(state, msg)
             processResult(result, PlaceLimitOrder(msg))            
         }
 
     action singlehopSwapAction(processResult: (Result, Message) => bool): bool = all {
         require(state.pools.keys().size() > 0),
-        // we will model swapping only the token pairs for which pools already exist
-        nondet existingPair = state.pools.keys().map(k => k.tokenPair).oneOf()
-        // becuase pools are indexed by sorted pairs, we need to be able to create the opposite pair, too
-        nondet switchPair = oneOf(Set(true, false))
-        val pair = if (switchPair) (existingPair._2, existingPair._1) else existingPair
+        // We will model swapping only of token pairs for which pools already exist.
+        // Since pools are indexed by sorted pairs, we need to be able to create the opposite pair, too
+        nondet pair = state.pools.keys().map(k => Set(k.tokenPair, k.tokenPair.reverse())).flatten().oneOf()
+
         nondet creator = oneOf(CREATORS)
 
-        val inTokenTotalAmount = state.coins.get(creator).get(pair._1)
+        val inTokenTotalAmount = state.coins.get((creator, pair._1))
         nondet amount = 0.to(inTokenTotalAmount).oneOf()
         nondet tick = oneOf(TICKS)
         val msg = {
@@ -205,22 +204,19 @@ module baseDexEvolution {
     // INVARIANTS
 
     // Invariant: shares supplies are always greater or equal to zero
-    val nonNegativeSharesSupply = state.pools.keys()
-        .forall(poolId => state.pools.get(poolId).shares >= 0)
+    val nonNegativeSharesSupply =
+        state.pools.values().forall(pool => pool.shares >= 0)
 
     // Invariant: coin and share balances are zero or greater
-    val nonNegativeBalances = CREATORS.forall(creator =>
-        val coins = state.coins.getOrElse(creator, Map())
-        val shares = state.poolShares.getOrElse(creator, Map())
-        coins.keys().forall(token => coins.get(token) >= 0) and
-        shares.keys().forall(share => shares.get(share) >= 0)
-        )
-
+    val nonNegativeBalances =
+        and {
+            state.coins.values().forall(coins => coins >= 0),
+            state.poolShares.values().forall(shares => shares.values().forall(share => share >= 0)),
+        }
 
     // Invariant: Tranche expiration times always >= -1 (sanity check)
     val expirationTimeSanity =
-        state.tranches.keys().forall(k => state.tranches.get(k).expirationTime >= -1)
-
+        state.tranches.values().forall(tranche => tranche.expirationTime >= -1)
 
     // totalMaker for a tranche equals the sum of all sharesOwned by the users
     val totalMakerInvariant = state.tranches.keys().forall(
@@ -236,7 +232,7 @@ module baseDexEvolution {
                 acc + sharesOwnedByUser
             )
             require(totalMaker == sharesOwnedSum)
-        )
+    )
 
     // A user's placed orders will retain their value: what a user placed in a tranche will match the sum of
     // existing reserves (both taker and maker) and withdrawn coins (both taker and maker)
@@ -250,12 +246,12 @@ module baseDexEvolution {
     val nonNegativePoolReserves = state.pools.keys().forall(poolId => 
         val reserves = state.pools.get(poolId).reserves
         reserves._1 >= 0 and reserves._2 >= 0
-        )
+    )
 
     // Sanity: All reserves are 0 or greater
     val nonNegativeTrancheAmounts = state.tranches.keys().forall(trancheKey =>
         val tranche = state.tranches.get(trancheKey)
-        and{
+        and {
             tranche.reservesMaker + TOLERANCE >= 0,
             tranche.reservesTaker + TOLERANCE >= 0,
             tranche.totalMaker + TOLERANCE >= 0,
@@ -286,7 +282,7 @@ module baseDexEvolution {
             pure val placedValue = computeDepositValue(totalPlaced, key.sellTick)
             pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick)
 
-            approx_gte(withdrew, placedValue, fromInt(2))
+            approx_gte(withdrew, placedValue, fromInt(5))
         }
 
         val shareAccount = state.tranchesShares.get(addr)

@@ -88,7 +88,7 @@ module runs {
                 // the swap didn't reach the tranche
                 assert(tranche.isFresh),
                 assert(pool.reserves == (6, 50)),
-                assert(res.state.coins.get("Carol").get("A") == 10004 and res.state.coins.get("Carol").get("B") == 9950),
+                assert(res.state.coins.get(("Carol", "A")) == 10004 and res.state.coins.get(("Carol", "B")) == 9950),
                 state' = res.state,
             }            
         )
@@ -107,8 +107,7 @@ module runs {
                 assert(res.error == "nil"),
                 assert(not(tranche.isFresh)),
                 assert(pool.reserves == (0, 110)),
-                val carolCoins = res.state.coins.get("Carol")
-                assert(carolCoins.get("A") == 10024 and carolCoins.get("B") == 9750),
+                assert(res.state.coins.get(("Carol", "A")) == 10024 and res.state.coins.get(("Carol", "B")) == 9750),
             }            
         )
 
