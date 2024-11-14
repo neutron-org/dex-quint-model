@@ -158,8 +158,8 @@ module baseDexEvolution {
                 trancheKey: trancheKey
             }
             all {
-                require(state.tranches.keys().contains(trancheKey)),
-                // we are not allowing  withdrawing from fresh tranches (there was no trading)
+                require(state.tranches.has(trancheKey)),
+                // we are not allowing withdrawing from fresh tranches (there was no trading)
                 // @audit-info Should we handle the error at this level or should we let individual functions handle it?
                 // This way is cleaner. The problem is that the simulation will not try at all then those cases where a withdraw on a non-fresh
                 // tranche is attempted.
