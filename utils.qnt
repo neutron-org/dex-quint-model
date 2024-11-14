@@ -146,32 +146,22 @@ module utils {
             // in the implementation, the id is connected to the block number. Here, we use increasing values
             {makerToken: makerToken, takerToken: takerToken, sellTick: sellTick, id: maxTrancheId + 1}
    
-    // given an amount in the taker token, return how much of it the tranche can exchange and the update amount of the tranche
+    // given an amount in the taker token, return how much of it the tranche can exchange and then update amount of the tranche
     pure def calculateTrancheExchangableAmount(amount: int, tranche: Tranche): 
     {
         trancheRemainingAmount: int,
         exchangedTakerAmount: int,
         exchangedMakerAmount: int
-    } = {        
+    } =       
         val makerPrice = priceFromTick(tranche.sellTick)
-        val trancheAmountInTakerToken: int = 
-            mulInt(makerPrice, tranche.reservesMaker).truncate()
-            
-        if (amount <= trancheAmountInTakerToken) 
-            val trancheRemainingTakerToken: int = trancheAmountInTakerToken - amount
-            val trancheRemainingMakerToken = intDivDec(trancheRemainingTakerToken, makerPrice).truncate()            
-            {
-                trancheRemainingAmount: trancheRemainingMakerToken,
-                exchangedTakerAmount: amount,
-                exchangedMakerAmount: tranche.reservesMaker - trancheRemainingMakerToken
-            }
-        else
-            {
-                trancheRemainingAmount: 0,
-                exchangedTakerAmount: trancheAmountInTakerToken,
-                exchangedMakerAmount: tranche.reservesMaker
-            }                
-    }
+        val userWantsToGetMakerToken = intDivDec(amount, makerPrice).truncate()
+        val outMakerToken = min(userWantsToGetMakerToken, tranche.reservesMaker)
+        val inTakerToken = mulInt(makerPrice, outMakerToken).ceil()
+        {
+            trancheRemainingAmount: tranche.reservesMaker - outMakerToken,
+            exchangedTakerAmount: inTakerToken,
+            exchangedMakerAmount: outMakerToken
+        }                    
 
     pure def getMinimumTrancheKey(trancheKeys: Set[TrancheKey]): TrancheKey =
         trancheKeys.fold(
