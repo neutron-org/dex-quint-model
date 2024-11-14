@@ -19,80 +19,80 @@ module violationRuns {
             val res = deposit(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),                
-                require(sharesGained(state, res.state, "Bob", key) == 547)
+                assert(res.error == "nil"),
+                assert(sharesGained(state, res.state, "Bob", key) == 547)
             })
         .then(
             val msg = withdrawMsgPool("Bob", key, 82)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Bob", "B") == 31),
-                require(coinsGained(state, res.state, "Bob", "C") == 50)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Bob", "B") == 31),
+                assert(coinsGained(state, res.state, "Bob", "C") == 50)
             })
         .then(
             val msg = depositMsgPool("Carol", key, (927, 11), false)
             val res = deposit(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
+                assert(res.error == "nil"),
                 // only gets 16 due to autoswap=false
-                require(sharesGained(state, res.state, "Carol", key) == 16)
+                assert(sharesGained(state, res.state, "Carol", key) == 16)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 7)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 2),
-                require(coinsGained(state, res.state, "Carol", "C") == 4)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 2),
+                assert(coinsGained(state, res.state, "Carol", "C") == 4)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 4)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 1),
-                require(coinsGained(state, res.state, "Carol", "C") == 2)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 1),
+                assert(coinsGained(state, res.state, "Carol", "C") == 2)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 1)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 0),
-                require(coinsGained(state, res.state, "Carol", "C") == 0)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 0),
+                assert(coinsGained(state, res.state, "Carol", "C") == 0)
             })
         .then(
             val msg = withdrawMsgPool("Bob", key, 308)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Bob", "B") == 120),
-                require(coinsGained(state, res.state, "Bob", "C") == 191)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Bob", "B") == 120),
+                assert(coinsGained(state, res.state, "Bob", "C") == 191)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 3)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 1),
-                require(coinsGained(state, res.state, "Carol", "C") == 1)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 1),
+                assert(coinsGained(state, res.state, "Carol", "C") == 1)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 1)
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 0),
-                require(coinsGained(state, res.state, "Carol", "C") == 0)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 0),
+                assert(coinsGained(state, res.state, "Carol", "C") == 0)
             })
         .expect(
             val carolDeposited = computeDepositValue(state.bookkeeping.pools.deposits.get(("Carol", key)), key.tick)
@@ -106,12 +106,12 @@ module violationRuns {
             val res = withdrawPool(state, msg)
             all {
                 state' = res.state,
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Bob", "B") == 62),
-                require(coinsGained(state, res.state, "Bob", "C") == 100)
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Bob", "B") == 62),
+                assert(coinsGained(state, res.state, "Bob", "C") == 100)
             })
         .expect(all {
-            require(state.poolShares.get("Bob").get(key) == 0),
+            assert(state.poolShares.get("Bob").get(key) == 0),
             val bobDeposited = computeDepositValue(state.bookkeeping.pools.deposits.get(("Bob", key)), key.tick)
             val bobWithdrew = computeDepositValue(state.bookkeeping.pools.withdrawals.get(("Bob", key)), key.tick)
             // Bob has gained something (even though there were no swaps, so he gained what Carol has lost)
