@@ -284,13 +284,13 @@ module utils {
                 else
                     val pool = pools.get(minPoolKey)
                     // tokenB is the one that the user will be getting
-                    val reservesTokenOut = if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2
+                    val reservesTokenOut = debug("reservesTokenOut: ",if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2)
                     val priceTokenOut = priceFromTick(minPoolReserveTick)                            
-                    val wantFromPool = intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate()                        
-                    val userGetsFromPool = if (wantFromPool <= reservesTokenOut) wantFromPool else  reservesTokenOut                        
-                    val userPutsIntoPool = 
-                        if (wantFromPool <= reservesTokenOut) acc.remainingAmountToExchange 
-                        else mulInt(priceTokenOut, reservesTokenOut).truncate()
+                    val wantFromPool = debug("want from pool", intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate())                        
+                    val userGetsFromPool = min(wantFromPool, reservesTokenOut)
+                    val userPutsIntoPool = debug("puts into pool",
+                        mulInt(priceTokenOut, userGetsFromPool).ceil()
+                    )
 
                     {
                         remainingPools: acc.remainingPools.setRemove(minPoolKey),
