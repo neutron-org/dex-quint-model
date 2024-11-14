@@ -33,13 +33,13 @@ module baseDexEvolution {
     // ACTIONS
     action withdrawPoolAction(processResult: (Result, Message) => bool): bool = all {
         // tuples of from creators and pools in which they have >0 share
-        val relevantCreatorsAndPools = tuples(CREATORS, state.pools.keys()).filter(((c, p)) => state.poolShares.get(c).getOrElse(p, 0) > 0)
+        val relevantCreatorsAndPools = tuples(CREATORS, state.pools.keys()).filter(((c, p)) => state.poolShares.getOrElse((c, p), 0) > 0)
         all {
             require(relevantCreatorsAndPools != Set()),
             nondet creatorAndPool = relevantCreatorsAndPools.oneOf()
             val creator = creatorAndPool._1
             val poolKey = creatorAndPool._2
-            nondet amountToWithdraw = oneOf(1.to(state.poolShares.get(creator).get(poolKey)))
+            nondet amountToWithdraw = oneOf(1.to(state.poolShares.get((creator, poolKey))))
             val msg = {
                 creator: creator,
                 tokenPair: poolKey.tokenPair,
@@ -145,7 +145,7 @@ module baseDexEvolution {
     }
 
     action withdrawLimitOrderAction(processResult: (Result, Message) => bool): bool =
-        val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
+        val creatorKeyTuples = nonTrivialTranchesOwners(state.tranchesShares)
         all {
             require(size(creatorKeyTuples) > 0),
             nondet chosenTuple = oneOf(creatorKeyTuples)
@@ -171,7 +171,7 @@ module baseDexEvolution {
 
     action cancelLimitOrderAction(processResult: (Result, Message) => bool): bool =
         // only those addresses that have some tranches can cancel them
-        val creatorKeyTuples = nontrivialTranchesOwners(state.tranchesShares, CREATORS)
+        val creatorKeyTuples = nonTrivialTranchesOwners(state.tranchesShares)
         all {
             require(size(creatorKeyTuples) > 0),
             // take one of the creators that have some tranches
@@ -211,7 +211,7 @@ module baseDexEvolution {
     val nonNegativeBalances =
         and {
             state.coins.values().forall(coins => coins >= 0),
-            state.poolShares.values().forall(shares => shares.values().forall(share => share >= 0)),
+            state.poolShares.values().forall(share => share >= 0),
         }
 
     // Invariant: Tranche expiration times always >= -1 (sanity check)
@@ -222,14 +222,9 @@ module baseDexEvolution {
     val totalMakerInvariant = state.tranches.keys().forall(
        trancheKey =>
             val totalMaker = state.tranches.get(trancheKey).totalMaker
-            val sharesOwnedSum = state.tranchesShares.keys().fold(
+            val sharesOwnedSum = state.tranchesShares.keys().filter(((_addr, key)) => key == trancheKey).fold(
                 0,
-                (acc, creator) =>
-                val sharesOwnedByUser =
-                    if (state.tranchesShares.get(creator).keys().contains(trancheKey))
-                        state.tranchesShares.get(creator).get(trancheKey).sharesOwned
-                    else 0
-                acc + sharesOwnedByUser
+                (acc, k) => acc + state.tranchesShares.get(k).sharesOwned
             )
             require(totalMaker == sharesOwnedSum)
     )
@@ -262,7 +257,7 @@ module baseDexEvolution {
     /// If a pool has some positive amount of reserves, it also has a positive amount of shares
     val reservesImplyShares = state.pools.keys().forall(poolId => {
         val reserves = state.pools.get(poolId).reserves
-        val totalShares = state.poolShares.values().fold(0, (acc, e) => acc + e.getOrElse(poolId, 0))
+        val totalShares = state.poolShares.values().fold(0, (acc, e) => acc + e)
         (reserves._1 > 0 or reserves._2 > 0) implies totalShares > 0
     })
 
@@ -270,7 +265,7 @@ module baseDexEvolution {
     /// it through full withdrawal or cancellation-induced withdrawal) be at no
     /// loss (with respect to the price set by tick specified by the user).
     /// We make sure that the two cases of withdrawals actually happen through witness properties
-    val noLossOnExhaustedTranches = state.tranchesShares.keys().forall(addr => {
+    val noLossOnExhaustedTranches = {
         pure def noLoss(state: State, addr: Addr, key: TrancheKey): bool = and {
             pure val placedAmount = state.bookkeeping.tranches.placements.get((addr, key))
             pure val withdrewAmount = state.bookkeeping.tranches.withdrawals.getOrElse((addr, key), 0)
@@ -285,12 +280,11 @@ module baseDexEvolution {
             approx_gte(withdrew, placedValue, fromInt(5))
         }
 
-        val shareAccount = state.tranchesShares.get(addr)
-        shareAccount.keys().forall(key => {
-            val s = shareAccount.get(key)
+        state.tranchesShares.keys().forall(((addr, key)) => {
+            val s = state.tranchesShares.get((addr, key))
             s.sharesWithdrawn == s.sharesOwned implies state.noLoss(addr, key)
         })
-    })
+    }
 
     /* 
     The total amount of coins in the system is always preserved
@@ -303,26 +297,19 @@ module baseDexEvolution {
     /* These invariants should be violated. If they are not, it means the model is not reaching important states */
 
     /// It should be possible to exhaust a tranche through cancelation
-    val exhaustedTrancheThroughCancelation = state.tranchesShares.keys().exists(addr => {
-        val shareAccount = state.tranchesShares.get(addr)
-        shareAccount.keys().exists(key => {
-            val s = shareAccount.get(key)
-            // When there is a cancelation, both of these are set to zero
-            s.sharesWithdrawn == 0 and s.sharesOwned == 0
-        })
+    val exhaustedTrancheThroughCancelation = state.tranchesShares.values().exists(s => {
+        // When there is a cancelation, both of these are set to zero
+        s.sharesWithdrawn == 0 and s.sharesOwned == 0
     })
 
     /// It should be possible to exhaust a tranche through withdraws
-    val exhaustedTrancheThroughWithdraw = state.tranchesShares.keys().exists(addr => {
-        val shareAccount = state.tranchesShares.get(addr)
-        shareAccount.keys().exists(key => {
-            val s = shareAccount.get(key)
-            s.sharesWithdrawn == s.sharesOwned and s.sharesWithdrawn != 0
-        })
+    val exhaustedTrancheThroughWithdraw = state.tranchesShares.values().exists(s => {
+        s.sharesWithdrawn == s.sharesOwned and s.sharesWithdrawn != 0
     })
 
     val sharedTranches = tuples(state.tranchesShares.keys(), state.tranchesShares.keys()).exists(((a, b)) =>
-        a != b and state.tranchesShares.get(a).keys().intersect(state.tranchesShares.get(b).keys()) != Set()
+        // user is different and tranche key is equal
+        a._1 != b._1 and a._2 == b._2
     )
 
     val allInvariants = all {

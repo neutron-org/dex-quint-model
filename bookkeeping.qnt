@@ -52,7 +52,7 @@ module bookkeeping {
     }
 
     pure def trackPoolDeposit(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), performAutoswap: bool,
-                             residualAmounts: (int, int), poolShares: Addr -> PoolId -> int, token0SellTick: int, autoswapFeeValue: Dec): TrackedValue = {
+                             residualAmounts: (int, int), poolShares: PoolShares, token0SellTick: int, autoswapFeeValue: Dec): TrackedValue = {
         pure val swappedAmounts = if (performAutoswap) Some(residualAmounts) else None
 
         pure val depositedValue = computeDepositValue(amounts, token0SellTick)
@@ -67,13 +67,9 @@ module bookkeeping {
 
         pure val newSwaps = match swappedAmounts {
             | Some(amounts) => {
-                 pure val diff = { token0Diff: amounts._1, token1Diff: amounts._2 }
-                 poolShares.keys().fold(t.pools.swaps, (swaps, addr) => {
-                     if (poolShares.get(addr).keys().contains(poolId)) {
-                          swaps.setByWithDefault((addr, poolId), s => s.union(Set(diff)), Set())
-                     } else {
-                         swaps
-                     }
+                pure val diff = { token0Diff: amounts._1, token1Diff: amounts._2 }
+                poolShares.keys().filter(((_addr, id)) => id == poolId).fold(t.pools.swaps, (swaps, shareKey) => {
+                    swaps.setByWithDefault(shareKey, s => s.union(Set(diff)), Set())
                 })
             }
             | None => t.pools.swaps
@@ -90,7 +86,7 @@ module bookkeeping {
         { ...t, pools: { ...t.pools, deposits: newDeposits, swaps: newSwaps, depositValues: newDepositValues } }
     }
 
-    pure def trackPoolWithdrawal(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), poolShares: Addr -> PoolId -> int): TrackedValue = {
+    pure def trackPoolWithdrawal(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), poolShares: PoolShares): TrackedValue = {
         pure val withdrawals = t.pools.withdrawals
         pure val newWithdrawals =
             if (withdrawals.has((addr, poolId)))
@@ -99,58 +95,36 @@ module bookkeeping {
                 withdrawals.put((addr, poolId), amounts)
 
         // Reset swaps being tracked by for this address and pool id if the user doesn't have shares left
-        pure val newSwaps = if (poolShares.get(addr).get(poolId) == 0) t.pools.swaps.put((addr, poolId), Set()) else t.pools.swaps
+        pure val newSwaps = if (poolShares.get((addr, poolId)) == 0) t.pools.swaps.put((addr, poolId), Set()) else t.pools.swaps
 
         { ...t, pools: { ...t.pools, withdrawals: newWithdrawals, swaps: newSwaps } }
     }
 
-    pure def trackSwap(t: TrackedValue, tranches: TrancheKey->Tranche, tranchesShares: Shares, poolShares: Addr -> PoolId -> int, swapUpdate: SwapUpdateInfo): TrackedValue = {
+    pure def trackSwap(t: TrackedValue, tranches: TrancheKey->Tranche, tranchesShares: TrancheShares, poolShares: PoolShares, swapUpdate: SwapUpdateInfo): TrackedValue = {
         pure val newTrancheSwaps = swapUpdate.tranchesUpdates.keys().fold(t.tranches.swaps, (swaps, key) => {
             pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
-            tranchesShares.keys().fold(swaps, (swaps, addr) => {
-                if (tranchesShares.get(addr).keys().contains(key)) {
-                     if (swaps.has((addr, key))) {
-                         swaps.setBy((addr, key), s => s.union(Set(diffForKey)))
-                     } else {
-                         swaps.put((addr, key), Set(diffForKey))
-                     }
-                } else {
-                    swaps
-                }
+            tranchesShares.keys().filter(((_addr, k)) => k == key).fold(swaps, (swaps, key) => {
+                swaps.setByWithDefault(key, s => s.union(Set(diffForKey)), Set())
             })
         })
         
         pure val newProceeds = swapUpdate.tranchesUpdates.keys().fold(t.tranches.proceedsToBeWithdrawn, (proceeds, key) => {
             pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
-            tranchesShares.keys().fold(proceeds, (proceeds, addr) => {
-                val userShares = tranchesShares.get(addr).get(key)
+            tranchesShares.keys().filter(((_addr, k)) => k == key).fold(proceeds, (swaps, shareKey) => {
+                val userShares = tranchesShares.get(shareKey)
                 val tranche = tranches.get(key)
+
                 pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
-                if (tranchesShares.get(addr).keys().contains(key)) {
-                    val usersPart = proRataShare(diffForKey.takerReservesDiff).truncate()
-                     if (proceeds.has((addr, key))) {
-                         proceeds.setBy((addr, key), s => s + usersPart)
-                     } else {
-                         proceeds.put((addr, key), usersPart)
-                     }
-                } else {
-                    proceeds
-                }
+                val usersPart = proRataShare(diffForKey.takerReservesDiff).truncate()
+
+                proceeds.setByWithDefault(shareKey, s => s + usersPart, 0)
             })
         })
 
         pure val newPoolSwaps = swapUpdate.poolUpdates.keys().fold(t.pools.swaps, (swaps, poolId) => {
             pure val diffForPool = swapUpdate.poolUpdates.get(poolId)
-            poolShares.keys().fold(swaps, (swaps, addr) => {
-                 if (poolShares.get(addr).keys().contains(poolId)) {
-                     if (swaps.has((addr, poolId))) {
-                         swaps.setBy((addr, poolId), s => s.union(Set(diffForPool)))
-                     } else {
-                         swaps.put((addr, poolId), Set(diffForPool))
-                     }
-                } else {
-                    swaps
-                }
+            poolShares.keys().filter(((_addr, id)) => id == poolId).fold(t.pools.swaps, (swaps, shareKey) => {
+                swaps.setByWithDefault(shareKey, s => s.union(Set(diffForPool)), Set())
             })
         })
 

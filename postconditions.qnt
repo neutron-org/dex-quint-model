@@ -31,8 +31,8 @@ module postconditions {
           after.coins.get((msg.creator, pair._2)) == before.coins.get((msg.creator, pair._2)) + outAmounts._2,
           // Shares are burned
           // We assume that we do not remove empty shares
-          after.poolShares.get(msg.creator).get(poolId) >= 0,
-          after.poolShares.get(msg.creator).get(poolId) == before.poolShares.get(msg.creator).get(poolId) - msg.sharesAmount,
+          after.poolShares.get((msg.creator, poolId)) >= 0,
+          after.poolShares.get((msg.creator, poolId)) == before.poolShares.get((msg.creator, poolId)) - msg.sharesAmount,
           sharesAfter >= 0,
           sharesAfter == sharesBefore - msg.sharesAmount,
        }
@@ -70,8 +70,8 @@ module postconditions {
           after.coins.get((msg.creator, pair._2)) == before.coins.get((msg.creator, pair._2)) - inAmounts._2,
 
           // Shares are minted
-          after.poolShares.get(msg.creator).has(poolId),
-          after.poolShares.get(msg.creator).get(poolId) == before.poolShares.get(msg.creator).getOrElse(poolId, 0) + outShares,
+          after.poolShares.has((msg.creator, poolId)),
+          after.poolShares.get((msg.creator, poolId)) == before.poolShares.getOrElse((msg.creator, poolId), 0) + outShares,
           sharesAfter == sharesBefore + outShares,
 
           // Pool ratio is maintained if no autoswap and both sides of the pool exist
@@ -135,13 +135,13 @@ module postconditions {
                 val totalMakerAmountBefore = if (before.tranches.keys().contains(trancheKey)) before.tranches.get(trancheKey).totalMaker else 0
                 after.tranches.get(trancheKey).totalMaker == totalMakerAmountBefore + remainingAmount,
                 // the user's shares now exists
-                after.tranchesShares.get(msg.creator).keys().contains(trancheKey),
+                after.tranchesShares.has((msg.creator, trancheKey)),
                 // the tranche shares are updated
                 val totalSharesBefore =
-                    if (before.tranches.keys().contains(trancheKey) and before.tranchesShares.get(msg.creator).keys().contains(trancheKey))
-                       before.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned
+                    if (before.tranches.keys().contains(trancheKey) and before.tranchesShares.has((msg.creator, trancheKey)))
+                       before.tranchesShares.get((msg.creator, trancheKey)).sharesOwned
                     else 0
-                val sharesDiff = after.tranchesShares.get(msg.creator).get(trancheKey).sharesOwned - totalSharesBefore
+                val sharesDiff = after.tranchesShares.get((msg.creator, trancheKey)).sharesOwned - totalSharesBefore
                 sharesDiff == remainingAmount
              }
           ),
@@ -188,7 +188,7 @@ module postconditions {
 
     pure def withdrawLimitOrderStateChanges(before: State, after: State, msg: WithdrawLimitOrderMsg): bool = {
         val tranche = before.tranches.get(msg.trancheKey)
-        val usersTrancheShares = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
+        val usersTrancheShares = before.tranchesShares.get((msg.creator, msg.trancheKey))
         val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
         val withdrawnAmountTakerToken = withdrawnAmounts.taker_token
         val withdrawnShares = withdrawnAmounts.shares
@@ -206,15 +206,14 @@ module postconditions {
 
            // the user's shares withdrawn have increased appropriately
            withdrawnShares ==
-              after.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn -
-              before.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesWithdrawn,
+              after.tranchesShares.get((msg.creator, msg.trancheKey)).sharesWithdrawn -
+              before.tranchesShares.get((msg.creator, msg.trancheKey)).sharesWithdrawn,
         }
     }
 
     pure def cancelLimitOrderStateChanges(before: State, after: State, msg: CancelLimitOrderMsg): bool =
        val tranche_before: Tranche = before.tranches.get(msg.trancheKey)
-       val users_tranches_shares_before = before.tranchesShares.get(msg.creator).get(msg.trancheKey)
-       val users_tranches_before = before.tranchesShares.get(msg.creator).keys()
+       val users_tranches_shares_before = before.tranchesShares.get((msg.creator, msg.trancheKey))
 
        val cancelAmountOutMakerToken = computeCancelAmountMakerToken(tranche_before, users_tranches_shares_before)
        val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche_before, users_tranches_shares_before).taker_token
@@ -242,7 +241,7 @@ module postconditions {
              after.tranches.get(msg.trancheKey).totalTaker,
 
           // the user has no more shares in that tranche.
-          after.tranchesShares.get(msg.creator).get(msg.trancheKey) == { sharesOwned: 0, sharesWithdrawn: 0 },
+          after.tranchesShares.get((msg.creator, msg.trancheKey)) == { sharesOwned: 0, sharesWithdrawn: 0 },
        }
 
     /* Postconditions for specification invariants */
@@ -270,7 +269,7 @@ module postconditions {
 
         // How much it should have gotten
         pure val swaps = before.bookkeeping.tranches.swaps.getOrElse((creator, trancheKey), Set())
-        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
+        pure val userShares = before.tranchesShares.get((creator, trancheKey))
         pure val tranche = before.tranches.get(trancheKey)
         pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
         pure val totalSwappedTakerAmount = swaps.fold(0, (acc, diff) => {
@@ -291,7 +290,7 @@ module postconditions {
         pure val withdrawnAmountMakerToken = after.coins.get((creator, makerDenom)) - before.coins.get((creator, makerDenom))
 
         // How much it should have gotten
-        pure val userShares = before.tranchesShares.get(creator).get(trancheKey)
+        pure val userShares = before.tranchesShares.get((creator, trancheKey))
         pure val tranche = before.tranches.get(trancheKey)
         pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)        
 
@@ -306,7 +305,7 @@ module postconditions {
     pure def poolProfit(before: State, after: State, msg: WithdrawPoolMsg): bool =
        after.bookkeeping.pools.deposits.keys().forall(((creator, poolId)) =>
           // If the user has withdrawn all their shares
-          after.poolShares.get(creator).get(poolId) == 0 implies
+          after.poolShares.get((creator, poolId)) == 0 implies
              val depositedValue = before.bookkeeping.pools.depositValues.getOrElse((creator, poolId), 0)
              val withdrawn = after.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
              val swaps = before.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
