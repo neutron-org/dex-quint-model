@@ -6,129 +6,169 @@ module violationRuns {
     import utils.* from "utils"
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
-    import dexEvolution.* from "dexEvolution"
+    import baseDexEvolution.* from "baseDexEvolution"
     import postconditions.* from "postconditions"
     import runsUtils.* from "runsUtils"
     
         
-
+    run noLossViolationAutoswapRun = 
+        val poolKey = {fee: 20000, tick: -100, tokenPair: ("A", "B")}
+        init
+        .then(
+            val msg = depositMsgPool("Bob", poolKey, (11,0), true)
+            val res = deposit(state, msg)
+            all{
+                state' = res.state,
+                assert(res.state.pools.get(poolKey).reserves == (11,0)),
+                assert(res.state.poolShares.get("Bob").get(poolKey) == 11),
+                
+            }
+        )
+        .then(
+            val msg = depositMsgPool("Alice", poolKey, (0, 2215), true)
+            val res = deposit(state, msg)
+            all{
+                state' = res.state,
+                assert(res.state.pools.get(poolKey).reserves == (11,2215)),
+                assert(res.state.poolShares.get("Alice").get(poolKey) == 1)
+            }
+        )
+        .then(
+            val msg = withdrawMsgPool("Alice", poolKey, 1)
+            val res = withdrawPool(state, msg)
+            all{
+                state' = res.state,
+                assert(res.state.pools.get(poolKey).reserves == (11,2215-184)),
+                assert(res.state.poolShares.get("Alice").get(poolKey) == 0)                
+            }
+        )
+        .then(
+            val totalDeposited = state.bookkeeping.pools.depositValues.get(("Alice", poolKey))
+            val withdrawnTokens = state.bookkeeping.pools.withdrawals.get(("Alice", poolKey))
+            val totalWithdrawn = computeDepositValue(withdrawnTokens, poolKey.tick).truncate()
+            all{
+                assert(totalDeposited - totalWithdrawn > 100),
+                state' = state
+            }
+        )
 
     // ------ The run illustrating the violation of the [NO-LOSS] and [NO-GAIN] properties
     // It is a cleared version of the generated trace violations/noLossViolation.itf.json
-    run noLossViolation = 
+    run noLossViolationRoundingRun = 
         val key = {fee: 6, tick: -9, tokenPair: ("B", "C")}
         init.then(
             val msg = depositMsgPool("Bob", key, (211,337), true)
             val res = deposit(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),                
-                require(sharesGained(state, res.state, "Bob", key) == 547)
+                state' = res.state,
+                assert(res.error == "nil"),                
+                assert(sharesGained(state, res.state, "Bob", key) == 548)
             })
         .then(
             val msg = withdrawMsgPool("Bob", key, 82)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Bob", "B") == 31),
-                require(coinsGained(state, res.state, "Bob", "C") == 50)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Bob", "B") == 31),
+                assert(coinsGained(state, res.state, "Bob", "C") == 50)
             })
         .then(
             val msg = depositMsgPool("Carol", key, (927, 11), false)
             val res = deposit(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
+                state' = res.state,
+                assert(res.error == "nil"),
                 // only gets 16 due to autoswap=false
-                require(sharesGained(state, res.state, "Carol", key) == 16)
+                assert(sharesGained(state, res.state, "Carol", key) == 16)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 7)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 2),
-                require(coinsGained(state, res.state, "Carol", "C") == 4)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 2),
+                assert(coinsGained(state, res.state, "Carol", "C") == 4)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 4)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 1),
-                require(coinsGained(state, res.state, "Carol", "C") == 2)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 1),
+                assert(coinsGained(state, res.state, "Carol", "C") == 2)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 1)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 0),
-                require(coinsGained(state, res.state, "Carol", "C") == 0)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 0),
+                assert(coinsGained(state, res.state, "Carol", "C") == 0)
             })
         .then(
             val msg = withdrawMsgPool("Bob", key, 308)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Bob", "B") == 120),
-                require(coinsGained(state, res.state, "Bob", "C") == 191)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Bob", "B") == 119),
+                assert(coinsGained(state, res.state, "Bob", "C") == 191)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 3)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 1),
-                require(coinsGained(state, res.state, "Carol", "C") == 1)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 1),
+                assert(coinsGained(state, res.state, "Carol", "C") == 1)
             })
         .then(
             val msg = withdrawMsgPool("Carol", key, 1)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Carol", "B") == 0),
-                require(coinsGained(state, res.state, "Carol", "C") == 0)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Carol", "B") == 0),
+                assert(coinsGained(state, res.state, "Carol", "C") == 0)
             })
         .then(
-            val carolDeposited = computeDepositValue(state.deposits.get("Carol").get(key).amounts, key.tick)
-            val carolWithdraws = computeDepositValue(state.poolWithdraws.get("Carol").get(key), key.tick)
+            val carolDeposited = state.bookkeeping.pools.depositValues.get(("Carol", key))
+            val carolWithdraws = computeDepositValue(state.bookkeeping.pools.withdrawals.get(("Carol", key)), key.tick).truncate()
             all{
-             unchangedState,
+             state' = state,
              state.poolShares.get("Carol").get(key) == 0,             
-             carolDeposited.sub(carolWithdraws).truncate() == 5
+             carolDeposited - carolWithdraws == 6
             })
         .then(
-            val msg = withdrawMsgPool("Bob", key, 157)
+            val msg = withdrawMsgPool("Bob", key, 158)
             val res = withdrawPool(state, msg)
             all{
-                onlyStateUpdate(res),
-                require(res.error == "nil"),
-                require(coinsGained(state, res.state, "Bob", "B") == 62),
-                require(coinsGained(state, res.state, "Bob", "C") == 100)
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(coinsGained(state, res.state, "Bob", "B") == 63),
+                assert(coinsGained(state, res.state, "Bob", "C") == 100)
             })
         .then(all{
-            unchangedState,
-            require(state.poolShares.get("Bob").get(key) == 0),
-            val bobDeposited = computeDepositValue(state.deposits.get("Bob").get(key).amounts, key.tick)
-            val bobWithdrew = computeDepositValue(state.poolWithdraws.get("Bob").get(key), key.tick)
+            state' = state,
+            assert(state.poolShares.get("Bob").get(key) == 0),
+            val bobDeposited = state.bookkeeping.pools.depositValues.get(("Bob", key))
+            val bobWithdrew = computeDepositValue(state.bookkeeping.pools.withdrawals.get(("Bob", key)), key.tick).truncate()
             // Bob has gained something (even though there were no swaps, so he gained what Carol has lost)
-            bobWithdrew.sub(bobDeposited).truncate() == 5
+            assert(bobWithdrew - bobDeposited > 5)
         })
     
-    // ------ The run illustrating the violation of the [POOL-RATIO-CONSTANT] property
-    // The runs showcases how a reserves ratio changed from
-    // 1/73 = 0.0136 to 4/724 = 0.0055
-    // In the inverse, this is going from 73 to 181
-    val testPoolKey: PoolId = {fee: 4, tick: -2, tokenPair: DEFAULT_TOKEN_PAIR}
-    run autoswapIssue = 
+    // // ------ The run illustrating the violation of the [POOL-RATIO-CONSTANT] property
+    // // The runs showcases how a reserves ratio changed from
+    // // 1/73 = 0.0136 to 4/724 = 0.0055
+    // // In the inverse, this is going from 73 to 181
+    
+    run autoswapIssueRun = 
+        val testPoolKey: PoolId = {fee: 4, tick: -2, tokenPair: DEFAULT_TOKEN_PAIR}
         val creator = DEFAULT_CREATOR
         init 
         .then(
@@ -136,7 +176,7 @@ module violationRuns {
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all{
-                onlyStateUpdate(res),
+                state' = res.state,
                 assert(updatedPool.reservesRatio() == (1, 73))
             }
         )
@@ -145,7 +185,7 @@ module violationRuns {
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all{
-                onlyStateUpdate(res),
+                state' = res.state,
                 assert(updatedPool.reservesRatio() == (2, 218))
             })
         .then(
@@ -153,7 +193,7 @@ module violationRuns {
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all{
-                onlyStateUpdate(res),
+                state' = res.state,
                 assert(updatedPool.reservesRatio() == (3, 435))
             })
         .then(
@@ -161,9 +201,8 @@ module violationRuns {
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all{
-                onlyStateUpdate(res),
+                state' = res.state,
                 assert(updatedPool.reservesRatio() == (4, 724))
             })
-
-       
+            
     }
