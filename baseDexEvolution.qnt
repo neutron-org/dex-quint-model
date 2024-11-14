@@ -101,7 +101,9 @@ module baseDexEvolution {
         nondet tokenIn = oneOf(TOKENS)
         nondet tokenOut = oneOf(TOKENS.filter(t => t != tokenIn))
 
-        val possibleAmounts = 1.to(state.coins.get((creator, tokenIn)))
+        // We allow here to select 0 (so as to avoid oneOf on an empty set), but 0 value is disallowed
+        // in the requirement below
+        val possibleAmounts = 0.to(state.coins.get((creator, tokenIn)))
         nondet amount = oneOf(possibleAmounts)
 
         // @audit-info not implemented for now, so using a trivial value
@@ -118,7 +120,7 @@ module baseDexEvolution {
         }
 
         all {
-            require(possibleAmounts != Set()),
+            require(amount > 0),
             val result = placeLimitOrder(state, msg)
             processResult(result, PlaceLimitOrder(msg))            
         }
