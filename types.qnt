@@ -180,6 +180,8 @@ module types {
         },
         pools: {
             deposits: (Addr, PoolId) -> (int, int),
+            // tracking the values deposited (if the autoswap fee is paid, then this minus the fee)
+            depositValues: (Addr, PoolId) -> int,
             withdrawals: (Addr, PoolId) -> (int, int),
             swaps: (Addr, PoolId) -> Set[{ token0Diff: int, token1Diff: int }]
         }

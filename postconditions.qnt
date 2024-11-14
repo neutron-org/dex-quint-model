@@ -302,24 +302,20 @@ module postconditions {
        after.bookkeeping.pools.deposits.keys().forall(((creator, poolId)) =>
           // If the user has withdrawn all their shares
           after.poolShares.get(creator).get(poolId) == 0 implies
-             val deposited = before.bookkeeping.pools.deposits.getOrElse((creator, poolId), (0, 0))
+             val depositedValue = before.bookkeeping.pools.depositValues.getOrElse((creator, poolId), 0)
              val withdrawn = after.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
              val swaps = before.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
              // If there were swaps, the user withdrew more value than deposited
              // TODO: We could maybe calculate the exact amount here from the swapped amounts as we do for tranches
              // Actually that might not be possible with the current tracking of swaps since there are partial withdraws for pools
             //  TODO: If there were swaps, the user collected also the fee on those swaps
-             if (swaps != Set()) approx_gt(
-                computeDepositValue(withdrawn, poolId.tick),
-                computeDepositValue(deposited, poolId.tick),
-                fromInt(TOLERANCE)
-             )
+            val totalWithdrawn = debug("totalWithdrawn: ", computeDepositValue(withdrawn, poolId.tick).truncate())
+            val totalDeposited = debug("totalDeposited: ", depositedValue)
+             if (swaps != Set()) totalWithdrawn + TOLERANCE >= totalDeposited
              // Otherwise, the user withdrew no less value than deposited
-             else approxEqualDec(
-                computeDepositValue(withdrawn, poolId.tick),
-                computeDepositValue(deposited, poolId.tick),
-                fromInt(TOLERANCE)
-             )
+             else 
+                abs(totalWithdrawn - totalDeposited) <= TOLERANCE
+                             
        )
 
     /// LP.5: When a single user withdraws 100% of their shares from the pool

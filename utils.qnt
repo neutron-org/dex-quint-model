@@ -60,6 +60,7 @@ module utils {
         },
         pools: {
             deposits: Map(),
+            depositValues: Map(),
             withdrawals: Map(),
             swaps: Map(),
         }

@@ -51,7 +51,7 @@ module bookkeeping {
         { ...t, tranches: { ...t.tranches, cancelations: newCancelations, swaps: newSwaps, proceedsToBeWithdrawn: newProceeds } }
     }
 
-    pure def trackPoolDeposit(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), swappedAmounts: Option[(int, int)], poolShares: Addr -> PoolId -> int): TrackedValue = {
+    pure def trackPoolDeposit(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), swappedAmounts: Option[(int, int)], poolShares: Addr -> PoolId -> int, pureDepositedValue: int): TrackedValue = {
         pure val deposits = t.pools.deposits
         pure val newDeposits =
             if (deposits.has((addr, poolId)))
@@ -73,7 +73,15 @@ module bookkeeping {
             | None => t.pools.swaps
         }
 
-        { ...t, pools: { ...t.pools, deposits: newDeposits, swaps: newSwaps } }
+        pure val depositValues = t.pools.depositValues
+        pure val newDepositValues = 
+            if (depositValues.has((addr, poolId)))
+                depositValues.setBy((addr, poolId), v => v + pureDepositedValue)
+            else
+                depositValues.put((addr, poolId), pureDepositedValue)
+            
+
+        { ...t, pools: { ...t.pools, deposits: newDeposits, swaps: newSwaps, depositValues: newDepositValues } }
     }
 
     pure def trackPoolWithdrawal(t: TrackedValue, addr: Addr, poolId: PoolId, amounts: (int, int), poolShares: Addr -> PoolId -> int): TrackedValue = {

@@ -39,7 +39,6 @@ module Dex {
         })
     }
 
-  
     pure def deposit(state: State, msg: DepositMsg): Result = {
         // first, sorting
         val pair = orderTokenPair(msg.tokenPair)
@@ -79,12 +78,15 @@ module Dex {
         val updatedCreatorCoins = state.coins.get(msg.creator)
             .setBy(pair._1, old => old - inAmounts._1)
             .setBy(pair._2, old => old - inAmounts._2)
+        
+        val depositedValue = computeDepositValue(inAmounts, token0SellTick)
+        val depositedValueWithoutFee = sub(depositedValue, autoswapFeeValue).truncate()
 
         ok({
             poolShares: updatedShares,
             pools: updatedPools,
             coins: state.coins.set(msg.creator, updatedCreatorCoins),
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares),
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares, depositedValueWithoutFee),
             ...state
         })
     }
