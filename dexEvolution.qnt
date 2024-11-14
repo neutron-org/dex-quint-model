@@ -47,4 +47,39 @@ module dexEvolution {
         base::allInvariants,
         postconditionOK.reportIfFalse("postconditionOK"),
     }
+
+
+    // WITNESSES
+
+    val trancheAndPoolForSwap = {
+        match actionTaken {
+            | Swap(msg) => {
+                val relevantTranches = base::state.tranches.keys().filter(key =>
+                    key.makerToken == msg.tokenPair._1 and
+                    key.takerToken == msg.tokenPair._2 and
+                    key.sellTick <= msg.limitPriceTick and
+                    base::state.tranches.get(key).isActive and
+                    base::state.tranches.get(key).reservesMaker > 0
+                )
+
+                val normalizedPair = orderTokenPair(msg.tokenPair)
+                val isPairNormalized = msg.tokenPair == normalizedPair
+                val askingForToken0Liquidity = msg.tokenPair._2 == normalizedPair._1
+
+                // find the pool that has liquidity that the user is asking for, and the tick is better than maxPriceTick
+                val relevantPools = base::state.pools.keys().filter(id =>
+                    id.tokenPair == normalizedPair and
+                    implies(askingForToken0Liquidity, base::state.pools.get(id).reserves._1 > 0) and
+                    implies(not(askingForToken0Liquidity), base::state.pools.get(id).reserves._2 > 0) and
+                    computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= msg.limitPriceTick
+                )
+
+                and {
+                  relevantTranches != Set(),
+                  relevantPools != Set(),
+                }
+            }
+            | _ => false
+        }
+    }
 }
