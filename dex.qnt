@@ -39,7 +39,6 @@ module Dex {
         })
     }
 
-  
     pure def deposit(state: State, msg: DepositMsg): Result = {
         // first, sorting
         val pair = orderTokenPair(msg.tokenPair)
@@ -52,7 +51,8 @@ module Dex {
         val poolId = getPoolId(pair, token0SellTick, msg.fee)
         val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
         val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
-        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+        // the amounots that need to be swapped
+        val residualAmounts = calcAutoswapAmount(amounts, pool.reserves, token0SellTick)
         val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
         val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
         val autoswapFeeValue = if (performAutoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
@@ -78,12 +78,15 @@ module Dex {
         val updatedCreatorCoins = state.coins.get(msg.creator)
             .setBy(pair._1, old => old - inAmounts._1)
             .setBy(pair._2, old => old - inAmounts._2)
+        
+        val depositedValue = computeDepositValue(inAmounts, token0SellTick)
+        val depositedValueWithoutFee = sub(depositedValue, autoswapFeeValue).truncate()
 
         ok({
             poolShares: updatedShares,
             pools: updatedPools,
             coins: state.coins.set(msg.creator, updatedCreatorCoins),
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares),
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares, depositedValueWithoutFee),
             ...state
         })
     }
@@ -144,7 +147,7 @@ module Dex {
             pools: updatedPools,
             coins: state.coins.set(msg.creator, updatedUserCoins),
             bookkeeping: state.bookkeeping
-              .trackTrancheDeposit(msg.creator, tranchesSharesUpdate.key, remainingAmount)
+              .trackTranchePlacement(msg.creator, tranchesSharesUpdate.key, remainingAmount)
               .trackSwap(state.tranches, state.tranchesShares,  state.poolShares, fulfilledOrderInfo),
             ...state
         })
