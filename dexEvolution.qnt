@@ -5,6 +5,7 @@ module dexEvolution {
     import types.* from "types"
     import utils.* from "utils"
     import postconditions.* from "postconditions"
+    import bookkeeping.* from "bookkeeping"
     import baseDexEvolution as base from "baseDexEvolution"
 
     // EXTRA STATE VARIABLES
@@ -17,7 +18,7 @@ module dexEvolution {
         base::init,
         postconditionOK' = true,
         actionTaken' = Init,
-        actionSuccess' = true
+        actionSuccess' = true,
     }
 
     action step: bool = any {
@@ -37,20 +38,13 @@ module dexEvolution {
         actionTaken' = msg
     }
 
-    pure def postconditionForMessage(before: State, after: State, message: Message): bool = {
-      match message {
-        | DepositPool(msg) => depositPostcondition(before, after, msg) and nonDecreasingPools(before, after, msg.tokenPair)
-        | PlaceLimitOrder(msg) => placeLimitOrderPostcondition(before, after, msg) and nonDecreasingPools(before, after, (msg.tokenIn, msg.tokenOut))
-        | CancelLimitOrder(msg) => cancelLimitOrderPostcondition(before, after, msg)
-        | WithdrawLimitOrder(msg) => withdrawLimitOrderPostcondition(before, after, msg)
-        | WithdrawPool(msg) => withdrawPoolPostcondition(before, after, msg)
-        | Swap(msg) => singlehopSwapPostcondition(before, after, msg) and nonDecreasingPools(before, after, msg.tokenPair)
-        | _ => true
-      }
-    }
-
     // INVARIANTS
 
     // Invariant: postconditions always hold
     val postconditions = postconditionOK
+
+    val allInvariants = all {
+        base::allInvariants,
+        postconditionOK.reportIfFalse("postconditionOK"),
+    }
 }

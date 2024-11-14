@@ -23,21 +23,17 @@ module types {
         | GoodTillTime(BlockTime)
         | JustInTime
 
-    // MESSAGES
+    type Message =
+      | DepositPool(DepositMsg)
+      | PlaceLimitOrder(PlaceLimitOrderMsg)
+      | CancelLimitOrder(CancelLimitOrderMsg)
+      | WithdrawLimitOrder(WithdrawLimitOrderMsg)
+      | WithdrawPool(WithdrawPoolMsg)
+      | Swap(SwapMsg)
+      | Init
+      | AdvanceTime
 
-    type Message = 
-    | DepositPool(DepositMsg)
-    | PlaceLimitOrder(PlaceLimitOrderMsg)
-    | CancelLimitOrder(CancelLimitOrderMsg)
-    | WithdrawLimitOrder(WithdrawLimitOrderMsg)
-    | WithdrawPool(WithdrawPoolMsg)
-    | Swap(SwapMsg)
-    | Init
-    | AdvanceTime
-
-
-
-    //@audit-info : Simplified to only allow deposit in a single position
+    // @audit-info : Simplified to only allow deposit in a single position
     type DepositMsg = {
         creator: Addr,
         tokenPair: (Token, Token),
@@ -45,7 +41,7 @@ module types {
         token0SellTick: TickIndex,
         fee: TickIndex,
         autoswap: bool
-        }
+    }
 
     type WithdrawPoolMsg = {
         creator: Addr,
@@ -53,14 +49,14 @@ module types {
         sharesAmount: int,
         tick: TickIndex,
         fee: Fee,
-        }
+    }
 
     type SwapMsg = {
         creator: Addr,
         tokenPair: (Token, Token),
         amount: int,
         limitPriceTick: TickIndex
-        }
+    }
 
     type PlaceLimitOrderMsg = {
         creator: Addr,
@@ -74,25 +70,24 @@ module types {
         tokenOut: Token,
         amountIn: int,
         maxAmountOut: int,
-        }
+    }
         
     type CancelLimitOrderMsg = {
         creator: Addr,
         trancheKey: TrancheKey
-        }
+    }
     
     type WithdrawLimitOrderMsg = {
         creator: Addr,
         trancheKey: TrancheKey
-        }
+    }
 
     // Coins captures the balances of all the users in the system
     type Coins = Addr -> TokenAccount
     type TokenAccount = Token -> int
     type Token = str
+
     // we model Time as int. The special value -1 will denote that the time is None
-    // @audit-info We could model it as an option type. However, I have a feeling it would increase
-    // boilerplate without clear wins. Am I wrong here?
     type BlockTime = int
 
     // @audit-info Is there a way to factor out the two types below? So that
@@ -122,9 +117,8 @@ module types {
         // for why this could not be udner tranche?
         makerDenomination: Token,
         takerDenomination: Token
-        }
+    }
 
-    
     type PoolId = {
         tokenPair: (Token, Token),
         // Pool's tick is the token0 sell tick, that is: 1 Token0 = price(tick)* 1 Token1
@@ -145,25 +139,22 @@ module types {
         sharesOwned: int,
         sharesWithdrawn: int
     }
-    type Shares = Addr -> ShareAccount
     type ShareAccount = TrancheKey -> UsersTrancheShares
+    type Shares = Addr -> ShareAccount
 
     type SwapUpdateInfo = {
         remainingAmount: int,
         outAmount: int, 
         tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
         poolUpdates: PoolId -> PoolUpdateDiff        
-        }
-
-    type OrderedList[_a] = List[_a]
+    }
 
     type State = {
-        
-        tranches: TrancheKey -> Tranche,        
+        tranches: TrancheKey -> Tranche,
         tranchesShares: Shares,        
 
+        pools: PoolId -> Pool,
         poolShares: Addr -> PoolId -> int,
-        pools: PoolId -> Pool, 
 
         // balances of all the users in the system
         coins: Coins,
@@ -174,10 +165,6 @@ module types {
         blockNumber: BlockTime,       
 
         // helper state variables, to be used in invariants
-        // total deposits, not to be updated as withdraws happen
-        // @audit-info The `swaps` variable is a candidate to be moved into its own separate variable
-        deposits: Addr -> PoolId -> {amounts: (int, int), swaps: bool},
-        poolWithdraws: Addr -> PoolId -> (int, int),
         bookkeeping: TrackedValue
     }
 
@@ -187,7 +174,16 @@ module types {
             placements: (Addr, TrancheKey) -> int, // only maker tokens can be deposited
             withdrawals: (Addr, TrancheKey) -> int, // only taker tokens can be withdrawn
             cancelations: (Addr, TrancheKey) -> (int, int), // both maker and taker can be withdrawn on cancelations
-            swaps: (Addr, TrancheKey) -> Set[{ makerReservesDiff: int, takerReservesDiff: int }]
+            swaps: (Addr, TrancheKey) -> Set[{ makerReservesDiff: int, takerReservesDiff: int }],
+            proceedsToBeWithdrawn: (Addr, TrancheKey) -> int // proceeds in the taker token
+
+        },
+        pools: {
+            deposits: (Addr, PoolId) -> (int, int),
+            // tracking the values deposited (if the autoswap fee is paid, then this minus the fee)
+            depositValues: (Addr, PoolId) -> int,
+            withdrawals: (Addr, PoolId) -> (int, int),
+            swaps: (Addr, PoolId) -> Set[{ token0Diff: int, token1Diff: int }]
         }
     }
 

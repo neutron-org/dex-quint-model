@@ -4,7 +4,6 @@ module utils {
     import dec.* from "lib/dec"
     import types.* from "types"
     import consts.* from "consts"
-    import bookkeeping.* from "bookkeeping"
     import basicSpells.* from "lib/basicSpells"
 
     pure def debug(msg, expr) =
@@ -51,15 +50,30 @@ module utils {
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
 
+    pure val emptyTrackedValue: TrackedValue = {
+        tranches: {
+            placements: Map(),
+            withdrawals: Map(),
+            cancelations: Map(),
+            swaps: Map(),
+            proceedsToBeWithdrawn: Map()
+        },
+        pools: {
+            deposits: Map(),
+            depositValues: Map(),
+            withdrawals: Map(),
+            swaps: Map(),
+        }
+    }
+
+
     pure def initState: State =
         // @audit-issue This should be the correct spec, but replaced by a simpler, hard-coded one due to
         // a problem in the simulator: https://github.com/informalsystems/quint/issues/1530
         // val possibleTokenAccounts = setOfMaps(CREATORS, setOfMaps(TOKENS, INITIAL_CREATORS_BALANCES))
         // nondet initCoins = oneOf(possibleTokenAccounts)
         val bal = INITIAL_CREATOR_BALANCE_TEMP
-        val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, TOKENS.fold(
-            Map(), (acc2, t) => acc2.put(t, bal)
-        )))
+        val initCoins = CREATORS.mapBy(_ => TOKENS.mapBy(_ => INITIAL_CREATOR_BALANCE_TEMP))
 
         {
             tranches: Map(),
@@ -68,8 +82,6 @@ module utils {
             blockNumber: 0,
             poolShares: CREATORS.mapBy(creator => Map()),
             pools: Map(),
-            deposits: CREATORS.mapBy(creator => Map()),
-            poolWithdraws: CREATORS.mapBy(creator => Map()),
             bookkeeping: emptyTrackedValue
         }
 
@@ -365,7 +377,7 @@ module utils {
     pure def tokenInSpentBasedOnOrderType(orderType: LimitOrderType, amountIn: int, remainingAmount: int): int = 
         match orderType {
             | GoodTillCancelled => amountIn
-            | FillOrKill => 0
+            | FillOrKill => if (remainingAmount > 0 ) 0 else amountIn
             | ImmediateOrCancel => amountIn - remainingAmount
             // not taking into account if the block is given in the past, assuming the code forbids this
             | GoodTillTime(_) => amountIn
@@ -480,14 +492,29 @@ module utils {
     pure def reservesRatio(p: Pool): Dec = 
         // assumes that reserves._2 is positive
         fromRatio(p.reserves._1, p.reserves._2)
+    
+    pure def calcAutoswapAmount(amounts: (int, int), reserves: (int, int), token0SellTick: TickIndex): (int, int) = {
+        val p = priceFromTick(-token0SellTick)
+        if (reserves == (0, 0)) (0, 0) else        
+        val swapAmount = intDivDec(
+            reserves._1 * amounts._2 - reserves._2 * amounts._1,
+            fromInt(reserves._1).add(mul(p, fromInt(reserves._2)))
+        )
+        if (swapAmount.eq(zero)) (0, 0) else
+        if (swapAmount.gt(zero)) (0, swapAmount.ceil())
+        else
+            val swapAmountAs1 = mulInt(swapAmount, -1)
+            val amountSwapped0 = mul(swapAmountAs1, p)
+            (amountSwapped0.ceil(), 0)
+    }
 
     // LP.2 in specification invariants
     // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0
-    pure def computeAutoswapFee(residualAmounts: (int, int), tick1To0: TickIndex, fee: TickIndex): Dec =
+    pure def computeAutoswapFeeValue(residualAmounts: (int, int), token0SellTick: TickIndex, fee: TickIndex): Dec =
         val res0 : Dec = residualAmounts._1.fromInt()
         val res1 : Dec = residualAmounts._2.fromInt()
-        val factor: Dec = one.sub(priceFromTick(fee))
-        val price1To0: Dec = priceFromTick(tick1To0)
+        val factor: Dec = one.sub(priceFromTick(-fee))
+        val price1To0: Dec = BASE_PRICE.pow(-token0SellTick)
         add(
             res0.mul(factor),
             res1.mul(factor).mul(price1To0)
@@ -578,22 +605,54 @@ module utils {
         else 
             -poolTick + fee
 
-    pure def updateSwapsBool(user: Addr, poolIds: Set[PoolId], userDeposits: PoolId -> {amounts: (int, int), swaps: bool}, userShares: PoolId -> int):
-    PoolId -> {amounts: (int, int), swaps: bool} = 
-        
-        poolIds.fold(userDeposits, (acc, id) => 
-            if (userDeposits.has(id) and userShares.get(id) > 0)
-                acc.set(id, {swaps: true, ...userDeposits.get(id)})
-            else acc
-            )
-
     // CANCEL RELATED FUNCTIONS
     pure def computeCancelAmountMakerToken(tranche: Tranche, usersShares: UsersTrancheShares): int =     
-        // @audit-info The calculation here is different (but equivalent) than in the spec. 
+        // @audit-info The calculation here is different (but equivalent) than the one in the spec. 
         // Are there perhaps some reasons to stick to the spec calculation?   
         val percentUnfilled = calculatePercentUnfilled(tranche)
         val sharesOwned = usersShares.sharesOwned
         percentUnfilled.mulInt(sharesOwned).truncate()    
 
+    // OTHER HELPER FUNCTIONS
+    pure def setByWithDefault(m: a -> b, k: a, op: (b) => b, default: b): a -> b = {
+        if (m.has(k))
+            m.setBy(k, op)
+        else
+            m.put(k, default).setBy(k, op)
+    }
 
+    pure def addAmounts(a: (int, int), b: (int, int)): (int, int) = {
+        (a._1 + b._1, a._2 + b._2)
+    }
+
+    pure def reportIfFalse(cond: bool, name: str): bool =
+        if (cond) true else q::debug(name, false)
+
+    // Returns total amount of all coins (at users, tranches, or pools) for a state
+    pure def totalCoins(s: State): Token -> int =
+        val coinsAtUsers = s.coins.keys().fold(
+            TOKENS.mapBy(token => 0),
+            (coinSummationMapping, user) => TOKENS.fold(
+                coinSummationMapping,
+                (acc, token) => acc.set(token, acc.get(token) + s.coins.get(user).get(token))
+            )                            
+        )
+        val updatedWithTranches = s.tranches.keys().fold(
+            coinsAtUsers,
+            (acc, key) => {
+                val tranche = s.tranches.get(key)
+                acc.setBy(tranche.makerDenomination, old => old + tranche.reservesMaker)
+                    .setBy(tranche.takerDenomination, old => old + tranche.reservesTaker)
+            }
+        )
+        val updatedWithPools = s.pools.keys().fold(
+            updatedWithTranches,
+            (acc, key) => {
+                val pool = s.pools.get(key)
+                acc
+                    .setBy(key.tokenPair._1, old => old + pool.reserves._1)
+                    .setBy(key.tokenPair._2, old => old + pool.reserves._2)
+            }
+        )
+        updatedWithPools
 }
