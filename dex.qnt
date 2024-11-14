@@ -91,8 +91,7 @@ module Dex {
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg): Result =        
         val maxBuyTick = - msg.sellTick
         val fulfilledOrderInfo = swap(
-            msg.tokenIn, 
-            msg.tokenOut,            
+            (msg.tokenIn, msg.tokenOut),
             state.tranches,
             state.pools,
             msg.amountIn,
@@ -153,8 +152,7 @@ module Dex {
     pure def singlehopSwap(state: State, msg: SwapMsg): Result = {
       val inAmount = msg.amount
       val fulfilledOrderInfo = swap(
-            msg.tokenPair._1,
-            msg.tokenPair._2,            
+            msg.tokenPair,
             state.tranches,
             state.pools,
             inAmount,

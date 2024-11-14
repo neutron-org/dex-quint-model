@@ -213,8 +213,7 @@ module utils {
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
     pure def swap(
-        tokenIn: Token,
-        tokenOut: Token,
+        tokenPair: (Token, Token),
         tranches: TrancheKey -> Tranche,
         pools: PoolId -> Pool,
         amount: int,
@@ -222,30 +221,32 @@ module utils {
         // TODO: maxAmountOut parameter not taken into account
         maxAmountOut: int 
     ): SwapUpdateInfo =
-        
-        val inOutPair = (tokenIn, tokenOut)
-        // I need this for pools because they are stored only under normalized pairs
-        val normalizedPair = orderTokenPair(inOutPair)
-        val isPairNormalized = inOutPair == normalizedPair
-        val askingForToken0Liquidity = inOutPair._2 == normalizedPair._1
+        // Token pairs are stored only under normalized pairs for pools
+        val normalizedPair = orderTokenPair(tokenPair)
+        val isPairNormalized = tokenPair == normalizedPair
+        val askingForToken0Liquidity = tokenPair._2 == normalizedPair._1
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         // checked: it should be both.
-        val relevantTranches = tranches.keys().filter(key => 
-            key.makerToken == tokenOut and
-            key.takerToken == tokenIn and
-            key.sellTick <= maxPriceTick and
-            tranches.get(key).isActive and
-            tranches.get(key).reservesMaker > 0
-            )
+        val relevantTranches = tranches.keys().filter(key =>
+            and {
+                key.takerToken == tokenPair._1,
+                key.makerToken == tokenPair._2,
+                key.sellTick <= maxPriceTick,
+                tranches.get(key).isActive,
+                tranches.get(key).reservesMaker > 0,
+            }
+        )
 
-        // find the pool that has liquidity that the user is asking for, and the tick is better than maxPriceTick   
+        // Find the pools that has liquidity that the user is asking for, and the tick is better than maxPriceTick
         val relevantPools = pools.keys().filter(id =>
-            id.tokenPair == normalizedPair and
-            implies(askingForToken0Liquidity, pools.get(id).reserves._1 > 0) and
-            implies(not(askingForToken0Liquidity), pools.get(id).reserves._2 > 0) and
-            computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick
-            )
+            and {
+                id.tokenPair == normalizedPair,
+                askingForToken0Liquidity implies pools.get(id).reserves._1 > 0,
+                not(askingForToken0Liquidity) implies pools.get(id).reserves._2 > 0,
+                computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick,
+            }
+        )
             
         val relevantLiquiditySize = size(relevantTranches) + size(relevantPools)
 
@@ -271,22 +272,24 @@ module utils {
                 // the pool price includes the fee
                 val minPoolReserveTick = computeReserveTick(minPoolKey.tick, askingForToken0Liquidity, minPoolKey.fee)
                 
-                // use the tranche key only if there are no more pools  or there are pools, but
-                //  their best price is strictly larger than that of the tranches
-                if (size(acc.remainingPools) == 0 or minTrancheKey.sellTick < minPoolReserveTick)                        
+                // use the tranche key only if there are no more pools or there are pools, but
+                // their best price is strictly larger than that of the tranches
+                if (acc.remainingPools == Set() or minTrancheKey.sellTick < minPoolReserveTick)
                     // I want to know how much I can exchange in this tranche 
                     val tranche = tranches.get(minTrancheKey)
                     val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
                     // update the acc value
                     {
+                        ...acc,
                         tranchesUpdates: acc.tranchesUpdates.put(
                             minTrancheKey, 
-                            {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
+                            { makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount }
+                        ),
                         remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
                         remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
                         outAmount: acc.outAmount + exchangeInfo.exchangedMakerAmount,
-                        ...acc
-                    } 
+                    }
+
                 // otherwise, I am using the pool
                 else
                     val pool = pools.get(minPoolKey)
@@ -294,27 +297,33 @@ module utils {
                     val reservesTokenOut = if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2
                     val priceTokenOut = priceFromTick(minPoolReserveTick)                            
                     val wantFromPool = intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate()                        
-                    val userGetsFromPool = if (wantFromPool <= reservesTokenOut) wantFromPool else  reservesTokenOut                        
+                    val userGetsFromPool = if (wantFromPool <= reservesTokenOut) wantFromPool else reservesTokenOut
                     val userPutsIntoPool = 
                         if (wantFromPool <= reservesTokenOut) acc.remainingAmountToExchange 
                         else mulInt(priceTokenOut, reservesTokenOut).truncate()
 
                     {
+                        ...acc,
                         remainingPools: acc.remainingPools.setRemove(minPoolKey),
                         remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
                         outAmount: acc.outAmount + userGetsFromPool,
                         poolUpdates: acc.poolUpdates.put(
                             minPoolKey, 
-                            if (isPairNormalized) {token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool} 
-                            else {token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool}
-                            ),
+                            if (isPairNormalized)
+                              { token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool }
+                            else
+                              { token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool }
+                        ),
                         outAmount: acc.outAmount + userGetsFromPool,
-                        ...acc
-                    }                        
+                    }
         )
         
-        {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
-        
+        {
+          remainingAmount: foldResult.remainingAmountToExchange,
+          outAmount: foldResult.outAmount,
+          poolUpdates: foldResult.poolUpdates,
+          tranchesUpdates: foldResult.tranchesUpdates
+        }
 
     pure def mayExpire(tranche: Tranche): bool = 
         tranche.expirationTime >= 0

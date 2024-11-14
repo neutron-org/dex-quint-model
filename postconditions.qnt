@@ -90,8 +90,7 @@ module postconditions {
     pure def placeLimitOrderStateChanges(before: State, after: State, msg: PlaceLimitOrderMsg): bool =
        val maxBuyTick = -msg.sellTick
        val fulfilledOrderInfo = swap(
-          msg.tokenIn,
-          msg.tokenOut,
+          (msg.tokenIn, msg.tokenOut),
           before.tranches,
           before.pools,
           msg.amountIn,
@@ -157,8 +156,7 @@ module postconditions {
     pure def singlehopSwapStateChanges(before: State, after: State, msg: SwapMsg): bool =
        val inAmount = msg.amount
        val fulfilledOrderInfo = swap(
-          msg.tokenPair._1,
-          msg.tokenPair._2,
+          msg.tokenPair,
           before.tranches,
           before.pools,
           inAmount,
