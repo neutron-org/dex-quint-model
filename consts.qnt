@@ -26,7 +26,7 @@ module consts {
     pure val TICKS: Set[TickIndex] = Set(-1000, -999, 999, 1000).union((-10).to(10)).union(((-100).to(-90))).union(90.to(100))
     pure val MAX_AMOUNT = 10000
 
-    pure val DEBUG_ENABLED = false
+    pure val DEBUG_ENABLED = true
 
 
     // Constants for different setups when running
