@@ -7,7 +7,6 @@ module runs {
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
     import baseDexEvolution.* from "baseDexEvolution"
-    // import postconditions.* from "postconditions"
     import runsUtils.* from "runsUtils"
 
     run test =

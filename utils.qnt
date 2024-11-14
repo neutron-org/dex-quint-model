@@ -67,11 +67,7 @@ module utils {
 
 
     pure def initState: State =
-        // @audit-issue This should be the correct spec, but replaced by a simpler, hard-coded one due to
-        // a problem in the simulator: https://github.com/informalsystems/quint/issues/1530
-        // val possibleTokenAccounts = setOfMaps(CREATORS, setOfMaps(TOKENS, INITIAL_CREATORS_BALANCES))
-        // nondet initCoins = oneOf(possibleTokenAccounts)
-        val bal = INITIAL_CREATOR_BALANCE_TEMP
+        val bal = INITIAL_CREATOR_BALANCE
         val initCoins = CREATORS.fold(Map(), (acc, c) => acc.put(c, TOKENS.fold(
             Map(), (acc2, t) => acc2.put(t, bal)
         )))

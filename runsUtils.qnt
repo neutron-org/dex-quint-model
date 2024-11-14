@@ -10,6 +10,9 @@ module runsUtils {
     import baseDexEvolution as baseEvolution from "baseDexEvolution"
     import postconditions.* from "postconditions"
 
+    pure val DEFAULT_CREATOR: Addr = "Alice"
+    pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
+
     action unchangedState = all {
         baseEvolution::state' = baseEvolution::state,
         postconditionOK' = postconditionOK,

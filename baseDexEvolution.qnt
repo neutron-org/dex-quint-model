@@ -81,7 +81,7 @@ module baseDexEvolution {
         nondet creatorAndPair = oneOf(creatorsAndPairs)
         val tokenPair = creatorAndPair.tokenPair
         val c = creatorAndPair.creator
-        nondet fee = oneOf(0.to(MAX_FEE))
+        nondet fee = oneOf(FEES)
         nondet tick = oneOf(TICKS)
         nondet amountTokenX = oneOf(0.to(state.coins.get(c).get(tokenPair._1)))
         nondet amountTokenY = oneOf(0.to(state.coins.get(c).get(tokenPair._2)))
