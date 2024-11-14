@@ -493,6 +493,21 @@ module utils {
     pure def reservesRatio(p: Pool): Dec = 
         // assumes that reserves._2 is positive
         fromRatio(p.reserves._1, p.reserves._2)
+    
+    pure def calcAutoswapAmount(amounts: (int, int), reserves: (int, int), token0SellTick: TickIndex): (int, int) = {
+        val p = priceFromTick(-token0SellTick)
+        if (reserves == (0, 0)) (0, 0) else        
+        val swapAmount = intDivDec(
+            reserves._1 * amounts._2 - reserves._2 * amounts._1,
+            fromInt(reserves._1).add(mul(p, fromInt(reserves._2)))
+        )
+        if (swapAmount.eq(zero)) (0, 0) else
+        if (swapAmount.gt(zero)) (0, swapAmount.ceil())
+        else
+            val swapAmountAs1 = mulInt(swapAmount, -1)
+            val amountSwapped0 = mul(swapAmountAs1, p)
+            (amountSwapped0.ceil(), 0)
+    }
 
     // LP.2 in specification invariants
     // autoswapFee = residualValue0 * (1 - 1.0001^-fee) + residualValue1 * (1 - 1.0001^-fee) * price1To0

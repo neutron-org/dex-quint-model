@@ -51,7 +51,7 @@ module postconditions {
        val sharesAfter = after.pools.get(poolId).shares
        // Deposit and shares computation considering the optional autoswap
        val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
-       val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+       val residualAmounts = calcAutoswapAmount(amounts, reservesBefore, token0SellTick)
        val inAmounts = if (msg.autoswap) amounts else inAmountsBeforeAutoswap
        val autoswapFee = if (msg.autoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
        val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, token0SellTick, autoswapFee)

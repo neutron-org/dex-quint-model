@@ -52,7 +52,8 @@ module Dex {
         val poolId = getPoolId(pair, token0SellTick, msg.fee)
         val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
         val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
-        val residualAmounts = (amounts._1 - inAmountsBeforeAutoswap._1, amounts._2 - inAmountsBeforeAutoswap._2)
+        // the amounots that need to be swapped
+        val residualAmounts = calcAutoswapAmount(amounts, pool.reserves, token0SellTick)
         val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
         val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
         val autoswapFeeValue = if (performAutoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
