@@ -9,14 +9,14 @@ module dexEvolution {
     import baseDexEvolution as base from "baseDexEvolution"
 
     // EXTRA STATE VARIABLES
-    var postconditionOK: bool
+    var previousState: State
     var actionSuccess: bool
     var actionTaken: Message
 
     // STATE MACHINE
     action init = all {
         base::init,
-        postconditionOK' = true,
+        previousState' = initState,
         actionTaken' = Init,
         actionSuccess' = true,
     }
@@ -34,18 +34,18 @@ module dexEvolution {
     action assignResult(result: Result, msg: Message): bool = all {
         actionSuccess' = result.error == "nil",
         base::state' = result.state,
-        postconditionOK' = if (result.error == "nil") postconditionForMessage(base::state, result.state, msg) else true,
+        previousState' = base::state,
         actionTaken' = msg
     }
 
     // INVARIANTS
 
     // Invariant: postconditions always hold
-    val postconditions = postconditionOK
+    val postconditions = actionSuccess implies postconditionForMessage(previousState, base::state, actionTaken)
 
     val allInvariants = all {
         base::allInvariants,
-        postconditionOK.reportIfFalse("postconditionOK"),
+        postconditions.reportIfFalse("postconditions"),
     }
 
 

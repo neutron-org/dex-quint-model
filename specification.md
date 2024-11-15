@@ -4,7 +4,7 @@ These are the invariants as provided by the development team.
 
 ### Limit Orders
 
-**LO.1:** When limit orders are swapped through the pro-rata portion of the swap value value will returnable to all participants via withdraws
+**LO.1:** When limit orders are swapped through the pro-rata portion of the swap value will returnable to all participants via withdraws
 
 - trancheUser.SharesOwned = amountIn
 - totalMakerDenom = sum(allTrancheUsers.SharesOwned)

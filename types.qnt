@@ -83,8 +83,7 @@ module types {
     }
 
     // Coins captures the balances of all the users in the system
-    type Coins = Addr -> TokenAccount
-    type TokenAccount = Token -> int
+    type Coins = (Addr, Token) -> int
     type Token = str
 
     // we model Time as int. The special value -1 will denote that the time is None
@@ -131,30 +130,20 @@ module types {
         shares: int
     }
 
-    type TrancheUpdateDiff = {makerReservesDiff: int, takerReservesDiff: int}
-    type PoolUpdateDiff = {token0Diff: int, token1Diff: int}
-
-    // @audit-issue We must make sure that `Shares` always contains all the Addr (Addr is not removed and is initialized)
-    type UsersTrancheShares = {
+    type UserTrancheShares = {
         sharesOwned: int,
         sharesWithdrawn: int
     }
-    type ShareAccount = TrancheKey -> UsersTrancheShares
-    type Shares = Addr -> ShareAccount
 
-    type SwapUpdateInfo = {
-        remainingAmount: int,
-        outAmount: int, 
-        tranchesUpdates: TrancheKey -> TrancheUpdateDiff, 
-        poolUpdates: PoolId -> PoolUpdateDiff        
-    }
+    type TrancheShares = (Addr, TrancheKey) -> UserTrancheShares
+    type PoolShares = (Addr, PoolId) -> int
 
     type State = {
         tranches: TrancheKey -> Tranche,
-        tranchesShares: Shares,        
+        tranchesShares: TrancheShares,
 
         pools: PoolId -> Pool,
-        poolShares: Addr -> PoolId -> int,
+        poolShares: PoolShares,
 
         // balances of all the users in the system
         coins: Coins,
@@ -187,5 +176,16 @@ module types {
         }
     }
 
-    type Result = {state: State, error: str}
+
+    type TrancheUpdateDiff = { makerReservesDiff: int, takerReservesDiff: int }
+    type PoolUpdateDiff = { token0Diff: int, token1Diff: int }
+
+    type SwapUpdateInfo = {
+        remainingAmount: int,
+        outAmount: int,
+        tranchesUpdates: TrancheKey -> TrancheUpdateDiff,
+        poolUpdates: PoolId -> PoolUpdateDiff
+    }
+
+    type Result = { state: State, error: str }
 }

@@ -12,8 +12,7 @@ module Dex {
     import basicSpells.* from "lib/basicSpells"
 
     pure def withdrawPool(state: State, msg: WithdrawPoolMsg): Result = {
-        // deposits and poolWithdraws variable management
-        //   @audit-info These three lines are a candidate to be replaced throughout the whole codebase
+        // @audit-info These three lines are a candidate to be replaced throughout the whole codebase
         val pair = orderTokenPair(msg.tokenPair)
         val tick = if (pair == msg.tokenPair) msg.tick else -msg.tick
         val poolId = getPoolId(pair, tick, msg.fee)
@@ -24,18 +23,19 @@ module Dex {
         val updatedReserves = (pool.reserves._1 - outAmounts._1, pool.reserves._2 - outAmounts._2)
         val updatedShares = pool.shares - msg.sharesAmount
         
-        val updatedCoinsForCreator = state.coins.get(msg.creator)
-            .setBy(pair._1, old => old + outAmounts._1)
-            .setBy(pair._2, old => old + outAmounts._2)
-        val updatedPoolSharesForCreator = state.poolShares.get(msg.creator)
-            .setBy(poolId, old => old - msg.sharesAmount)
+        val updatedCoins = state.coins
+            .setBy((msg.creator, pair._1), old => old + outAmounts._1)
+            .setBy((msg.creator, pair._2), old => old + outAmounts._2)
+
+        val updatedPoolShares = state.poolShares
+            .setBy((msg.creator, poolId),  old => old - msg.sharesAmount)
 
         ok({
-            pools: state.pools.set(poolId, {reserves: updatedReserves, shares: updatedShares}),
-            coins: state.coins.set(msg.creator, updatedCoinsForCreator),
-            poolShares: state.poolShares.set(msg.creator, updatedPoolSharesForCreator),
+            ...state,
+            pools: state.pools.set(poolId, { reserves: updatedReserves, shares: updatedShares }),
+            coins: updatedCoins,
+            poolShares: updatedPoolShares,
             bookkeeping: state.bookkeeping.trackPoolWithdrawal(msg.creator, poolId, outAmounts, state.poolShares),
-            ...state
         })
     }
 
@@ -49,9 +49,10 @@ module Dex {
         if (isPoolBehindEnemyLines(state, pair, token0SellTick, msg.fee, amounts)) { state: state, error: "Pool behind enemy lines" } else
         
         val poolId = getPoolId(pair, token0SellTick, msg.fee)
-        val pool = if (state.pools.has(poolId)) state.pools.get(poolId) else emptyPool
+        val pool = state.pools.getOrElse(poolId, emptyPool)
+
         val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
-        // the amounots that need to be swapped
+        // the amounts that need to be swapped
         val residualAmounts = calcAutoswapAmount(amounts, pool.reserves, token0SellTick)
         val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
         val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
@@ -60,42 +61,33 @@ module Dex {
 
         if (outShares == 0) { state: state, error: "No shares created" } else
 
-        // updating the pool shares
-        val initShares = state.poolShares.getOrElse(msg.creator, Map()).getOrElse(poolId, 0)
-        val updatedShares = state.poolShares.put(
-            msg.creator,
-            state.poolShares.getOrElse(msg.creator, Map()).put(poolId, initShares + outShares)
-        )
+        val updatedShares = state.poolShares.setByWithDefault((msg.creator, poolId),  old => old + outShares, 0)
 
-        // updating the pools        
         val updatedPools = state.pools.put(
             poolId,
             {
                 reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
                 shares: pool.shares + outShares
             }
-        )                
-        val updatedCreatorCoins = state.coins.get(msg.creator)
-            .setBy(pair._1, old => old - inAmounts._1)
-            .setBy(pair._2, old => old - inAmounts._2)
-        
-        val depositedValue = computeDepositValue(inAmounts, token0SellTick)
-        val depositedValueWithoutFee = sub(depositedValue, autoswapFeeValue).truncate()
+        )
+
+        val updatedCoins = state.coins
+            .setBy((msg.creator, pair._1), old => old - inAmounts._1)
+            .setBy((msg.creator, pair._2), old => old - inAmounts._2)
 
         ok({
+            ...state,
             poolShares: updatedShares,
             pools: updatedPools,
-            coins: state.coins.set(msg.creator, updatedCreatorCoins),
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, (if (performAutoswap) Some(residualAmounts) else None), state.poolShares, depositedValueWithoutFee),
-            ...state
+            coins: updatedCoins,
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue),
         })
     }
     
-    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg): Result =        
+    pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg): Result = {
         val maxBuyTick = - msg.sellTick
         val fulfilledOrderInfo = swap(
-            msg.tokenIn, 
-            msg.tokenOut,            
+            (msg.tokenIn, msg.tokenOut),
             state.tranches,
             state.pools,
             msg.amountIn,
@@ -131,33 +123,28 @@ module Dex {
                 placeRemainingLimitOrderAmount(tradeUpdatedTranches, state.tranchesShares, msg, remainingAmount, expirationBlock)
         
         val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
+
         // 3) update the user's balance
-        val updatedUserCoins = state.coins.get(msg.creator).keys().mapBy(
-            token => 
-            if (token == msg.tokenOut)
-                state.coins.get(msg.creator).get(token) + tokenOutReceived
-            else if (token == msg.tokenIn)
-                state.coins.get(msg.creator).get(token) - tokenInSpent
-            else
-                state.coins.get(msg.creator).get(token)                
-        )
+        val updatedUserCoins = state.coins
+            .setBy((msg.creator, msg.tokenOut), coins => coins + tokenOutReceived)
+            .setBy((msg.creator, msg.tokenIn), coins => coins - tokenInSpent)
 
         ok({
+            ...state,
             tranches: tranchesSharesUpdate.tranches,
             tranchesShares: tranchesSharesUpdate.tranchesShares,
             pools: updatedPools,
-            coins: state.coins.set(msg.creator, updatedUserCoins),
+            coins: updatedUserCoins,
             bookkeeping: state.bookkeeping
               .trackTranchePlacement(msg.creator, tranchesSharesUpdate.key, remainingAmount)
               .trackSwap(state.tranches, state.tranchesShares,  state.poolShares, fulfilledOrderInfo),
-            ...state
         })
+    }
 
     pure def singlehopSwap(state: State, msg: SwapMsg): Result = {
       val inAmount = msg.amount
       val fulfilledOrderInfo = swap(
-            msg.tokenPair._1,
-            msg.tokenPair._2,            
+            msg.tokenPair,
             state.tranches,
             state.pools,
             inAmount,
@@ -171,9 +158,10 @@ module Dex {
         val usedAmount = inAmount - remainingAmount
 
         // 1) update the coins of the user
-        val updatedCoins = state.coins.get(msg.creator)
-                .setBy(msg.tokenPair._1, old => old - usedAmount)
-                .setBy(msg.tokenPair._2, old => old + outAmount)
+        val updatedCoins = state.coins
+                .setBy((msg.creator, msg.tokenPair._1), old => old - usedAmount)
+                .setBy((msg.creator, msg.tokenPair._2), old => old + outAmount)
+
         // 2) update the reserves of the pools
         val updatedPools = updatePools(state.pools, poolsUpdateInfo)
 
@@ -182,101 +170,75 @@ module Dex {
 
 
         ok({
-            coins: state.coins.set(msg.creator, updatedCoins),
+            ...state,
+            coins: updatedCoins,
             pools: updatedPools,
             tranches: updatedTranches,
             bookkeeping: state.bookkeeping.trackSwap(state.tranches, state.tranchesShares, state.poolShares, fulfilledOrderInfo),
-            ...state
         })
     }
 
-    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg): Result =
+    pure def withdrawLimitOrder(state: State, msg: WithdrawLimitOrderMsg): Result = {
         val tranche = state.tranches.get(msg.trancheKey)
-        val usersTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)        
+        val usersTrancheShares = state.tranchesShares.get((msg.creator, msg.trancheKey))
         val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
         val withdrawnTaker = withdrawnAmounts.taker_token
         val withdrawnShares = withdrawnAmounts.shares
         
         // 1) user's taker token balance needs to be updated
-        val updatedUsersCoins = state.coins.get(msg.creator).get(tranche.takerDenomination) + withdrawnTaker
+        val updatedCoins = state.coins.setBy((msg.creator, tranche.takerDenomination), coins => coins + withdrawnTaker)
         // 2) the reserves taker denom need to be updated
         val updatedTrancheTakerReserves = tranche.reservesTaker - withdrawnTaker
         // 3) updating the user's shares: increasing the withdrawn shares
         val updatedUserShares = {sharesWithdrawn: usersTrancheShares.sharesWithdrawn + withdrawnShares, ...usersTrancheShares}
-        val updatedState = 
-        {
-            coins: state.coins.setBy(
-                msg.creator, 
-                old => old.set(tranche.takerDenomination, updatedUsersCoins)),
+
+        ok({
+            ...state,
+            coins: updatedCoins,
             tranches: state.tranches.set(msg.trancheKey, {reservesTaker: updatedTrancheTakerReserves, ...tranche}),
-            tranchesShares: state.tranchesShares.setBy(
-                msg.creator, 
-                old => old.set(msg.trancheKey, updatedUserShares)),
+            tranchesShares: state.tranchesShares.set((msg.creator, msg.trancheKey), updatedUserShares),
             bookkeeping: state.bookkeeping.trackTrancheWithdrawal(msg.creator, msg.trancheKey, withdrawnTaker),
-            ...state
-        }
-        ok(updatedState)
+        })
+    }
 
-    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg): Result =
-        // 1) update the user's tranchesShares record
-        val updatedUsersTranches = 
-            state.tranchesShares.get(msg.creator).keys().fold(
-                Map(),
-                (acc, trancheKey) => 
-                if (trancheKey == msg.trancheKey)
-                    acc.put(trancheKey, {sharesOwned: 0, sharesWithdrawn: 0})
-                else
-                    acc.put(trancheKey, state.tranchesShares.get(msg.creator).get(trancheKey))
-            )
-
+    pure def cancelLimitOrder(state: State, msg: CancelLimitOrderMsg): Result = {
         val tranche = state.tranches.get(msg.trancheKey)
-        val usersTrancheShares = state.tranchesShares.get(msg.creator).get(msg.trancheKey)
-        // 2) update the user's coins
-        // 2a) calculate the amount of the tranche maker token that the user should receive back                                
+        val usersTrancheShares = state.tranchesShares.get((msg.creator, msg.trancheKey))
+        // 1) update the user's coins
+        // 1a) calculate the amount of the tranche maker token that the user should receive back
         val cancelAmountMakerToken = computeCancelAmountMakerToken(tranche, usersTrancheShares)
-        val updatedUserCoinsMaker = state.coins.get(msg.creator).get(msg.trancheKey.makerToken) + cancelAmountMakerToken
-        
-        // 2b) calculate the amount of the tranche taker token that the user should receive back (withdraw equivalent)
+        // 1b) calculate the amount of the tranche taker token that the user should receive back (withdraw equivalent)
         val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche, usersTrancheShares).taker_token            
-        val updatedUserCoinsTaker = state.coins.get(msg.creator).get(msg.trancheKey.takerToken) + withdrawAmountTakerToken
-       
-        // 3) update the tranche reserves
+
+        // 2) update the tranche reserves
         val updatedTranche = {
             reservesMaker: tranche.reservesMaker - cancelAmountMakerToken,
-            totalMaker: tranche.totalMaker - state.tranchesShares.get(msg.creator).get(msg.trancheKey).sharesOwned,
+            totalMaker: tranche.totalMaker - usersTrancheShares.sharesOwned,
             reservesTaker: tranche.reservesTaker - withdrawAmountTakerToken,
             totalTaker: tranche.totalTaker - withdrawAmountTakerToken,
             ...tranche
         }
 
-        // updated state
-        val updatedState =
-        {
-            tranchesShares: state.tranchesShares.set(msg.creator, updatedUsersTranches),
-            coins: state.coins.set(
-                msg.creator,
-                state.coins.get(msg.creator)
-                    .set(msg.trancheKey.makerToken, updatedUserCoinsMaker)
-                    .set(msg.trancheKey.takerToken, updatedUserCoinsTaker)
-                ),
+        ok({
+            ...state,
+            tranchesShares: state.tranchesShares.set((msg.creator, msg.trancheKey), { sharesOwned: 0, sharesWithdrawn: 0 }),
+            coins: state.coins
+                        .setBy((msg.creator, msg.trancheKey.makerToken), coins => coins + cancelAmountMakerToken)
+                        .setBy((msg.creator, msg.trancheKey.takerToken), coins => coins + withdrawAmountTakerToken),
             tranches: state.tranches.set(msg.trancheKey, updatedTranche),
             bookkeeping: state.bookkeeping.trackTrancheCancelation(msg.creator, msg.trancheKey, cancelAmountMakerToken, withdrawAmountTakerToken),
-            ... state
-        }
-        ok(updatedState)
-    
+        })
+    }
+
     pure def advanceBlocks(state: State, numBlocks: int): Result = {
         val newBlock = state.blockNumber + numBlocks
-        val updatedTranches = state.tranches.keys()
-            .mapBy(k =>
-                val tranche = state.tranches.get(k) 
-                if (tranche.mayExpire() and tranche.expirationTime < newBlock)
-                    {isActive: false, ...state.tranches.get(k)}
-                  else
-                    state.tranches.get(k)
-            )
-        
-        val updatedState = {blockNumber: newBlock, tranches: updatedTranches, ...state}
-        ok(updatedState)
+        val updatedTranches = state.tranches.transformValues(tranche => {
+             if (tranche.mayExpire() and tranche.expirationTime < newBlock)
+                 { ...tranche, isActive: false }
+             else
+               tranche
+        })
+
+        ok({ ...state, blockNumber: newBlock, tranches: updatedTranches })
     }
 }

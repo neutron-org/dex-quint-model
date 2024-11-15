@@ -25,27 +25,15 @@ module utils {
         else
             fromRatio(t.reservesMaker, t.totalMaker)
     
-    pure def calculateUserTotalTrancheShare(t: Tranche, users_share_account: ShareAccount): Dec =
-        val userShare = users_share_account.get(t.trancheKey).sharesOwned
-        if (t.totalMaker == 0)
-            zero
-        else
-            fromRatio(userShare, t.totalMaker)
-
-    pure def calculateUserNonWithdrawnTrancheShare(t: Tranche, users_share_account: ShareAccount): Dec =
-        val userShare = users_share_account.get(t.trancheKey).sharesOwned - users_share_account.get(t.trancheKey).sharesWithdrawn
-        if (t.totalMaker == 0)
-            zero
-        else
-            fromRatio(userShare, t.totalMaker)
-
     // ------- OTHER
     
     pure def min(a,b) = if (a<b) a else b
 
     pure def priceFromTick(tick: int): Dec =
         BASE_PRICE.pow(tick)
-    
+
+    pure def reverse(tokenPair: (str, str)): (str, str) = (tokenPair._2, tokenPair._1)
+
     pure def ok(state: State): Result = {state: state, error: "nil"}
 
     pure def error(state: State, error: str): Result = {state: state, error: error}
@@ -67,23 +55,15 @@ module utils {
     }
 
 
-    pure def initState: State =
-        // @audit-issue This should be the correct spec, but replaced by a simpler, hard-coded one due to
-        // a problem in the simulator: https://github.com/informalsystems/quint/issues/1530
-        // val possibleTokenAccounts = setOfMaps(CREATORS, setOfMaps(TOKENS, INITIAL_CREATORS_BALANCES))
-        // nondet initCoins = oneOf(possibleTokenAccounts)
-        val bal = INITIAL_CREATOR_BALANCE_TEMP
-        val initCoins = CREATORS.mapBy(_ => TOKENS.mapBy(_ => INITIAL_CREATOR_BALANCE_TEMP))
-
-        {
-            tranches: Map(),
-            coins: initCoins,
-            tranchesShares: CREATORS.mapBy(creator => Map()),
-            blockNumber: 0,
-            poolShares: CREATORS.mapBy(creator => Map()),
-            pools: Map(),
-            bookkeeping: emptyTrackedValue
-        }
+    pure def initState: State = {
+        tranches: Map(),
+        coins: tuples(CREATORS, TOKENS).mapBy(_ => INITIAL_CREATOR_BALANCE),
+        tranchesShares: Map(),
+        blockNumber: 0,
+        poolShares: Map(),
+        pools: Map(),
+        bookkeeping: emptyTrackedValue
+    }
 
     // ----
 
@@ -206,8 +186,7 @@ module utils {
     //  - a mapping from trancheKeys to amounts that should be filled with this tranche
     //  - an integer saying how much of the order amount is still remaining
     pure def swap(
-        tokenIn: Token,
-        tokenOut: Token,
+        tokenPair: (Token, Token),
         tranches: TrancheKey -> Tranche,
         pools: PoolId -> Pool,
         amount: int,
@@ -215,30 +194,32 @@ module utils {
         // TODO: maxAmountOut parameter not taken into account
         maxAmountOut: int 
     ): SwapUpdateInfo =
-        
-        val inOutPair = (tokenIn, tokenOut)
-        // I need this for pools because they are stored only under normalized pairs
-        val normalizedPair = orderTokenPair(inOutPair)
-        val isPairNormalized = inOutPair == normalizedPair
-        val askingForToken0Liquidity = inOutPair._2 == normalizedPair._1
+        // Token pairs are stored only under normalized pairs for pools
+        val normalizedPair = orderTokenPair(tokenPair)
+        val isPairNormalized = tokenPair == normalizedPair
+        val askingForToken0Liquidity = tokenPair._2 == normalizedPair._1
         
         // @audit-info check if key.tick < maxPriceTick is the right semantics, or it should be on average
         // checked: it should be both.
-        val relevantTranches = tranches.keys().filter(key => 
-            key.makerToken == tokenOut and
-            key.takerToken == tokenIn and
-            key.sellTick <= maxPriceTick and
-            tranches.get(key).isActive and
-            tranches.get(key).reservesMaker > 0
-            )
+        val relevantTranches = tranches.keys().filter(key =>
+            and {
+                key.takerToken == tokenPair._1,
+                key.makerToken == tokenPair._2,
+                key.sellTick <= maxPriceTick,
+                tranches.get(key).isActive,
+                tranches.get(key).reservesMaker > 0,
+            }
+        )
 
-        // find the pool that has liquidity that the user is asking for, and the tick is better than maxPriceTick   
+        // Find the pools that has liquidity that the user is asking for, and the tick is better than maxPriceTick
         val relevantPools = pools.keys().filter(id =>
-            id.tokenPair == normalizedPair and
-            implies(askingForToken0Liquidity, pools.get(id).reserves._1 > 0) and
-            implies(not(askingForToken0Liquidity), pools.get(id).reserves._2 > 0) and
-            computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick
-            )
+            and {
+                id.tokenPair == normalizedPair,
+                askingForToken0Liquidity implies pools.get(id).reserves._1 > 0,
+                not(askingForToken0Liquidity) implies pools.get(id).reserves._2 > 0,
+                computeReserveTick(id.tick, askingForToken0Liquidity, id.fee) <= maxPriceTick,
+            }
+        )
             
         val relevantLiquiditySize = size(relevantTranches) + size(relevantPools)
 
@@ -264,28 +245,31 @@ module utils {
                 // the pool price includes the fee
                 val minPoolReserveTick = computeReserveTick(minPoolKey.tick, askingForToken0Liquidity, minPoolKey.fee)
                 
-                // use the tranche key only if there are no more pools  or there are pools, but
-                //  their best price is strictly larger than that of the tranches
-                if (size(acc.remainingPools) == 0 or minTrancheKey.sellTick < minPoolReserveTick)                        
+                // use the tranche key only if there are no more pools or there are pools, but
+                // their best price is strictly larger than that of the tranches
+                if (acc.remainingPools == Set() or minTrancheKey.sellTick < minPoolReserveTick)
                     // I want to know how much I can exchange in this tranche 
                     val tranche = tranches.get(minTrancheKey)
                     val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
                     // update the acc value
                     {
+                        ...acc,
                         tranchesUpdates: acc.tranchesUpdates.put(
                             minTrancheKey, 
-                            {makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount}),
+                            { makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount }
+                        ),
                         remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
                         remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
                         outAmount: acc.outAmount + exchangeInfo.exchangedMakerAmount,
-                        ...acc
-                    } 
+                    }
+
                 // otherwise, I am using the pool
                 else
                     val pool = pools.get(minPoolKey)
                     // tokenB is the one that the user will be getting
                     val reservesTokenOut = debug("reservesTokenOut: ",if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2)
-                    val priceTokenOut = priceFromTick(minPoolReserveTick)                            
+                    val priceTokenOut = priceFromTick(minPoolReserveTick)
+
                     val wantFromPool = debug("want from pool", intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate())                        
                     val userGetsFromPool = min(wantFromPool, reservesTokenOut)
                     val userPutsIntoPool = debug("puts into pool",
@@ -293,21 +277,27 @@ module utils {
                     )
 
                     {
+                        ...acc,
                         remainingPools: acc.remainingPools.setRemove(minPoolKey),
                         remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
                         outAmount: acc.outAmount + userGetsFromPool,
                         poolUpdates: acc.poolUpdates.put(
                             minPoolKey, 
-                            if (isPairNormalized) {token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool} 
-                            else {token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool}
-                            ),
+                            if (isPairNormalized)
+                              { token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool }
+                            else
+                              { token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool }
+                        ),
                         outAmount: acc.outAmount + userGetsFromPool,
-                        ...acc
-                    }                        
+                    }
         )
         
-        {remainingAmount: foldResult.remainingAmountToExchange, outAmount: foldResult.outAmount, poolUpdates: foldResult.poolUpdates, tranchesUpdates: foldResult.tranchesUpdates}
-        
+        {
+          remainingAmount: foldResult.remainingAmountToExchange,
+          outAmount: foldResult.outAmount,
+          poolUpdates: foldResult.poolUpdates,
+          tranchesUpdates: foldResult.tranchesUpdates
+        }
 
     pure def mayExpire(tranche: Tranche): bool = 
         tranche.expirationTime >= 0
@@ -374,8 +364,8 @@ module utils {
             | JustInTime => amountIn
         }        
 
-    pure def placeRemainingLimitOrderAmount(tranches: TrancheKey->Tranche, shares: Shares, msg: PlaceLimitOrderMsg, amount: int, expirationBlockTime: BlockTime)
-    : { tranches: TrancheKey->Tranche, tranchesShares: Shares, key: Option[TrancheKey] } =
+    pure def placeRemainingLimitOrderAmount(tranches: TrancheKey->Tranche, shares: TrancheShares, msg: PlaceLimitOrderMsg, amount: int, expirationBlockTime: BlockTime)
+    : { tranches: TrancheKey->Tranche, tranchesShares: TrancheShares, key: Option[TrancheKey] } =
         
         if (amount == 0) { tranches: tranches, tranchesShares: shares, key: None }
         else 
@@ -385,23 +375,22 @@ module utils {
         val takerToken = msg.tokenOut        
         val creator = msg.creator
         
-        val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.sellTick, tranches, expirationBlockTime)                      
-        val tranchesAndSharesUpdate = 
-        if (tranches.keys().contains(trancheKey)) // if the key was one of the previously existing
-            val updatedTranches = tranches.setBy(trancheKey, 
-                old => {reservesMaker: old.reservesMaker + amount, totalMaker: old.totalMaker + amount, ...old})
-            val newShares = if (shares.get(creator).keys().contains(trancheKey))
-                {
-                    sharesOwned: shares.get(creator).get(trancheKey).sharesOwned + amount, 
-                    sharesWithdrawn: shares.get(creator).get(trancheKey).sharesWithdrawn
-                } else {sharesOwned: amount, sharesWithdrawn: 0}
-            val updatedShares = shares.setBy(
-                creator,
-                (old => old.put(trancheKey, newShares))
+        val trancheKey = calculateTrancheKey(makerToken, takerToken, msg.sellTick, tranches, expirationBlockTime)
+
+        if (tranches.has(trancheKey)) // if the key was one of the previously existing
+            val updatedTranches = tranches.setBy(
+                trancheKey,
+                old => { ...old, reservesMaker: old.reservesMaker + amount, totalMaker: old.totalMaker + amount }
             )
+
+            val updatedShares = shares.setByWithDefault(
+                (creator, trancheKey),
+                old => { ...old, sharesOwned: old.sharesOwned + amount },
+                { sharesOwned: 0, sharesWithdrawn: 0 }
+            )
+
             { tranches: updatedTranches, tranchesShares:updatedShares, key: Some(trancheKey) }
-        // if we are adding a fully new tranche
-        else                    
+        else // if we are adding a fully new tranche
             val newTranche = {
                 isFresh: true,
                 isActive: true,
@@ -415,15 +404,11 @@ module utils {
                 makerDenomination: makerToken,
                 takerDenomination: takerToken
             }
-            val newShareAccount = {sharesOwned: amount, sharesWithdrawn: 0}                    
-            val updatedTranches = tranches.put(trancheKey, newTranche)
-            val updatedShares = shares.setBy(
-                    creator,
-                    old => old.put(trancheKey, newShareAccount)
-                )
-            { tranches: updatedTranches, tranchesShares: updatedShares, key: Some(trancheKey) }
 
-        tranchesAndSharesUpdate
+            val updatedTranches = tranches.put(trancheKey, newTranche)
+            val updatedShares = shares.put((creator, trancheKey), { sharesOwned: amount, sharesWithdrawn: 0 })
+
+            { tranches: updatedTranches, tranchesShares: updatedShares, key: Some(trancheKey) }
 
     // DEPOSIT RELATED FUNCTIONS
 
@@ -531,26 +516,17 @@ module utils {
 
     // Assembles a set of tuples of creator and trancheKey, where the creator has some ownership in the tranche
     // Useful when nondeterministically selecting a creator and a tranche inside withdraw or cancel action
-    pure def nontrivialTranchesOwners(tranchesShares: Shares, users: Set[Addr]): Set[(Addr, TrancheKey)] = 
-        users.fold(
-            Set(),
-            (acc, user) => val newTuples = 
-                // for each creator's shares
-                tranchesShares.getOrElse(user, Map()).keys()
-                    // take into account those shares in which the creator has some ownership
-                    .filter(trancheKey => tranchesShares.get(user).get(trancheKey).sharesOwned > 0)
-                    // and then create a tuple of creator and trancheKey
-                    .map(trancheKey => (user, trancheKey))
-                acc.union(newTuples)
-        )    
-    
-    pure def computeWithdrawAmountTakerToken(tranche: Tranche, userShares: UsersTrancheShares): {taker_token: int, shares: int} = 
+    pure def nonTrivialTranchesOwners(tranchesShares: TrancheShares): Set[(Addr, TrancheKey)] =
+        tranchesShares.keys()
+            // take into account those shares in which the creator has some ownership
+            .filter(key => tranchesShares.get(key).sharesOwned > 0)
 
+    pure def computeWithdrawAmountTakerToken(tranche: Tranche, userShares: UserTrancheShares): {taker_token: int, shares: int} =
         val percentFilled = calculatePercentFilled(tranche)
         val withdrawAmountInMakerToken = percentFilled.mulInt(userShares.sharesOwned).truncate() - userShares.sharesWithdrawn                
         val withdrawAmountInTakerToken = mulInt(priceFromTick(tranche.sellTick), withdrawAmountInMakerToken).truncate()
 
-        {taker_token: withdrawAmountInTakerToken, shares: withdrawAmountInMakerToken}
+        { taker_token: withdrawAmountInTakerToken, shares: withdrawAmountInMakerToken }
     
         
     // WITHDRAW POOL RELATED FUNCTIONS
@@ -558,7 +534,6 @@ module utils {
     // Assumes that totalShares > 0, which is checked by the invariants
     // LP.4 in specification invariants
     pure def computeAmountsWithdrawnPool(reserves: (int, int), totalShares: int, sharesToRemove: int): (int, int) =
-
         // We mimic the implementation here for capturing truncation. The spec gives a more intuitive expression,
         // proRataShare = sharesToRemove / totalShares, which is then multiplies with total reserves.
         val outAmount0 = fromRatio(reserves._1*sharesToRemove, totalShares).truncate()
@@ -596,7 +571,7 @@ module utils {
             -poolTick + fee
 
     // CANCEL RELATED FUNCTIONS
-    pure def computeCancelAmountMakerToken(tranche: Tranche, usersShares: UsersTrancheShares): int =     
+    pure def computeCancelAmountMakerToken(tranche: Tranche, usersShares: UserTrancheShares): int =
         // @audit-info The calculation here is different (but equivalent) than the one in the spec. 
         // Are there perhaps some reasons to stick to the spec calculation?   
         val percentUnfilled = calculatePercentUnfilled(tranche)
@@ -622,11 +597,9 @@ module utils {
     pure def totalCoins(s: State): Token -> int =
         val coinsAtUsers = s.coins.keys().fold(
             TOKENS.mapBy(token => 0),
-            (coinSummationMapping, user) => TOKENS.fold(
-                coinSummationMapping,
-                (acc, token) => acc.set(token, acc.get(token) + s.coins.get(user).get(token))
-            )                            
+            (acc, key) => acc.setBy(key._2, amount => amount + s.coins.get(key))
         )
+
         val updatedWithTranches = s.tranches.keys().fold(
             coinsAtUsers,
             (acc, key) => {

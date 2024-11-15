@@ -7,28 +7,27 @@ module runs {
     import basicSpells.* from "lib/basicSpells"
     import Dex.* from "dex"
     import baseDexEvolution.* from "baseDexEvolution"
-    // import postconditions.* from "postconditions"
     import runsUtils.* from "runsUtils"
 
     run test =
-        val poolKey1 =  {fee: 10, tick: 23027, tokenPair: ("A", "B")}    
-        val poolKey2 =  {fee: 10, tick: 200, tokenPair: ("A", "B")}    
+        val poolKey1 = { fee: 10, tick: 23027, tokenPair: ("A", "B") }
+        val poolKey2 = { fee: 10, tick: 200, tokenPair: ("A", "B") }
         val msg: DepositMsg = depositMsgPool("Bob", poolKey1, (200, 0), true)
         val msg2 = depositMsgPool("Carol", poolKey2, (200,0), true)
+
         init
-        .then(state' = deposit(state, msg).state)
-        .then(state' = deposit(state, msg).state)
+          .then(state' = deposit(state, msg).state)
+          .then(state' = deposit(state, msg).state)
 
     run depositLimitInteraction = 
-        val poolKey = {fee: 39, tick: 130, tokenPair: ("A", "B")}
-        init
-        .then(
+        val poolKey = { fee: 39, tick: 130, tokenPair: ("A", "B") }
+        init.then(
             val msg = depositMsgPool("Bob", poolKey, (0, 6071), true)
             val res = deposit(state, msg)
             all{
                 state' = res.state,
-                require(res.state.poolShares.get("Bob").get(poolKey) == 6150),
-                require(res.state.pools.get(poolKey).reserves == (0, 6071))
+                assert(res.state.poolShares.get("Bob").get(poolKey) == 6150),
+                assert(res.state.pools.get(poolKey).reserves == (0, 6071))
             }
         )
         .then(
@@ -43,18 +42,17 @@ module runs {
             }
             val res = placeLimitOrder(state, msg)
             all{
-                require(res.error == "nil"),
-                require(res.state.pools.get(poolKey).reserves == (6126,0)),
-                require(res.state.deposits.get("Bob").get(poolKey).swaps == true),
+                assert(res.error == "nil"),
+                assert(res.state.pools.get(poolKey).reserves == (6126,0)),
+                assert(res.state.bookkeeping.pools.swaps.get(("Bob", poolKey)) != Set()),
                 state' = res.state,
             }
         )
 
     run swapExample_run =
-        val poolKey = {fee: 10, tick: 23027, tokenPair: ("A", "B")}    
-        val trancheKey = {id: 1, makerToken: "A", takerToken: "B", sellTick: 23037}        
-        init
-        .then(
+        val poolKey = { fee: 10, tick: 23027, tokenPair: ("A", "B") }
+        val trancheKey = { id: 1, makerToken: "A", takerToken: "B", sellTick: 23037 }
+        init.then(
             val msg: PlaceLimitOrderMsg = {
                 creator: "Alice",
                 orderType: GoodTillCancelled,
@@ -67,7 +65,7 @@ module runs {
             val res = placeLimitOrder(state, msg)
             all{
                 state' = res.state,
-                require(res.error == "nil")                
+                assert(res.error == "nil")
             }
         )
         .then(
@@ -86,11 +84,11 @@ module runs {
             val tranche = res.state.tranches.get(trancheKey)
             val pool  = res.state.pools.get(poolKey)
             all{
-                require(res.error == "nil"),
+                assert(res.error == "nil"),
                 // the swap didn't reach the tranche
-                require(tranche.isFresh),
-                require(pool.reserves == (6, 50)),
-                require(res.state.coins.get("Carol").get("A") == 10004 and res.state.coins.get("Carol").get("B") == 9950),
+                assert(tranche.isFresh),
+                assert(pool.reserves == (6, 50)),
+                assert(res.state.coins.get(("Carol", "A")) == 10004 and res.state.coins.get(("Carol", "B")) == 9950),
                 state' = res.state,
             }            
         )
@@ -106,18 +104,16 @@ module runs {
             val pool  = res.state.pools.get(poolKey)
             all{                
                 state' = res.state,
-                require(res.error == "nil"),
-                require(not(tranche.isFresh)),
-                require(pool.reserves == (0, 110)),
-                val carolCoins = res.state.coins.get("Carol")
-                require(carolCoins.get("A") == 10024 and carolCoins.get("B") == 9750),
+                assert(res.error == "nil"),
+                assert(not(tranche.isFresh)),
+                assert(pool.reserves == (0, 110)),
+                assert(res.state.coins.get(("Carol", "A")) == 10024 and res.state.coins.get(("Carol", "B")) == 9750),
             }            
         )
 
     run behindTrancheEnemyLines_run =
         val creator = DEFAULT_CREATOR        
-        init
-        .then(
+        init.then(
             val order: PlaceLimitOrderMsg = {
                 creator: creator,
                 orderType: GoodTillCancelled,
@@ -136,7 +132,7 @@ module runs {
             val res = deposit(state, depositMsg)
             all{
                 // not behind enemy lines yet
-                require(res.error == "nil"),
+                assert(res.error == "nil"),
                 state' = res.state
             }
         )
@@ -146,57 +142,53 @@ module runs {
             val res = deposit(state, depositMsg)
             all{
                 // now we are behind enemy lines
-                require(not(res.error == "nil")),
+                assert(not(res.error == "nil")),
                 state' = res.state
             }
         )
         .then(
-            val key1: PoolId = {fee: 0, tick: 0, tokenPair: ("A", "B")}
+            val key1: PoolId = { fee: 0, tick: 0, tokenPair: ("A", "B") }
             val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 0), true)
             val res = deposit(state, depositMsg)
             all{
                 // again behind enemy lines
-                require(not(res.error == "nil")),
+                assert(not(res.error == "nil")),
                 state' = res.state
             }
         )
 
     run behindPoolEnemyLine_run = 
         val creator = DEFAULT_CREATOR
-        init
-        .then(
-            val key1: PoolId = {fee: 5, tick: -100, tokenPair: ("A", "B")}
+        init.then(
+            val key1: PoolId = { fee: 5, tick: -100, tokenPair: ("A", "B") }
             val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
             val res = deposit(state, depositMsg)
             all{
-                require(res.error == "nil"),
+                assert(res.error == "nil"),
                 state' = res.state,                
             }            
         ) 
         .then(
-            val key1: PoolId = {fee: 3, tick: -100, tokenPair: ("A", "B")}
+            val key1: PoolId = { fee: 3, tick: -100, tokenPair: ("A", "B") }
             val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
             val res = deposit(state, depositMsg)
             all{
-                require(res.error == "nil"),
+                assert(res.error == "nil"),
                 state' = res.state,                
             }            
         )        
         .then(
-            val key1: PoolId = {fee: 5, tick: -80, tokenPair: ("A", "B")}
+            val key1: PoolId = { fee: 5, tick: -80, tokenPair: ("A", "B") }
             val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
             val res = deposit(state, depositMsg)
             all {
                 state' = res.state,
-                require(res.error == "Pool behind enemy lines"),                
+                assert(res.error == "Pool behind enemy lines"),
             }
         )
-    
-    
 
     run limitOrderTrade_run = 
-        init
-        .then(
+        init.then(
             val bobsOrder: PlaceLimitOrderMsg = {
                 creator: "Bob",
                 orderType: GoodTillCancelled,
@@ -242,7 +234,7 @@ module runs {
                 }                
             }        
         )
-    //     // Run again Alice's order to completely fill Bob's order and create a new tranche
+        // Run again Alice's order to completely fill Bob's order and create a new tranche
         .then(
             val alicesOrder: PlaceLimitOrderMsg = {
                 creator: "Alice",
@@ -265,6 +257,4 @@ module runs {
                 }                
             }
         )
-        
-            
     }
