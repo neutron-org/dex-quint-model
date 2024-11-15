@@ -110,10 +110,9 @@ module bookkeeping {
         
         pure val newProceeds = swapUpdate.tranchesUpdates.keys().fold(t.tranches.proceedsToBeWithdrawn, (proceeds, key) => {
             pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
-            tranchesShares.keys().filter(((_addr, k)) => k == key).fold(proceeds, (swaps, shareKey) => {
+            tranchesShares.keys().filter(((_addr, k)) => k == key).fold(proceeds, (proceeds, shareKey) => {
                 val userShares = tranchesShares.get(shareKey)
                 val tranche = tranches.get(key)
-
                 pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
                 val usersPart = proRataShare(diffForKey.takerReservesDiff).truncate()
 
@@ -123,7 +122,7 @@ module bookkeeping {
 
         pure val newPoolSwaps = swapUpdate.poolUpdates.keys().fold(t.pools.swaps, (swaps, poolId) => {
             pure val diffForPool = swapUpdate.poolUpdates.get(poolId)
-            poolShares.keys().filter(((_addr, id)) => id == poolId).fold(t.pools.swaps, (swaps, shareKey) => {
+            poolShares.keys().filter(((_addr, id)) => id == poolId).fold(swaps, (swaps, shareKey) => {
                 swaps.setByWithDefault(shareKey, s => s.union(Set(diffForPool)), Set())
             })
         })
