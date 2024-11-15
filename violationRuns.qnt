@@ -19,7 +19,7 @@ module violationRuns {
             all {
                 state' = res.state,
                 assert(res.state.pools.get(poolKey).reserves == (11,0)),
-                assert(res.state.poolShares.get("Bob").get(poolKey) == 11),
+                assert(res.state.poolShares.get(("Bob",poolKey)) == 11),
                 
             }
         )
@@ -29,7 +29,7 @@ module violationRuns {
             all {
                 state' = res.state,
                 assert(res.state.pools.get(poolKey).reserves == (11,2215)),
-                assert(res.state.poolShares.get("Alice").get(poolKey) == 1)
+                assert(res.state.poolShares.get(("Alice", poolKey)) == 1)
             }
         )
         .then(
@@ -38,7 +38,7 @@ module violationRuns {
             all {
                 state' = res.state,
                 assert(res.state.pools.get(poolKey).reserves == (11,2215-184)),
-                assert(res.state.poolShares.get("Alice").get(poolKey) == 0)                
+                assert(res.state.poolShares.get(("Alice", poolKey)) == 0)                
             }
         )
         .then(
@@ -140,7 +140,7 @@ module violationRuns {
             val carolWithdraws = computeDepositValue(state.bookkeeping.pools.withdrawals.get(("Carol", key)), key.tick).truncate()
             all {
              state' = state,
-             state.poolShares.get("Carol").get(key) == 0,             
+             state.poolShares.get(("Carol", key)) == 0,             
              carolDeposited - carolWithdraws == 6
             })
         .then(
@@ -154,7 +154,7 @@ module violationRuns {
             })
         .then(all {
             state' = state,
-            assert(state.poolShares.get("Bob").get(key) == 0),
+            assert(state.poolShares.get(("Bob", key)) == 0),
             val bobDeposited = state.bookkeeping.pools.depositValues.get(("Bob", key))
             val bobWithdrew = computeDepositValue(state.bookkeeping.pools.withdrawals.get(("Bob", key)), key.tick).truncate()
             // Bob has gained something (even though there were no swaps, so he gained what Carol has lost)

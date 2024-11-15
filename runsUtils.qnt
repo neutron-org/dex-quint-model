@@ -11,15 +11,7 @@ module runsUtils {
     import postconditions.* from "postconditions"
 
     pure val DEFAULT_CREATOR: Addr = "Alice"
-    pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
-
-    action unchangedState = all {
-        baseEvolution::state' = baseEvolution::state,
-        postconditionOK' = postconditionOK,
-        actionTaken' = actionTaken,
-        actionSuccess' = actionSuccess
-
-    }
+    pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")    
 
     pure def depositMsgPool(creator: Addr, poolKey: PoolId, amountPair: (int, int), doAutoswap: bool): DepositMsg = {
         creator: creator,
@@ -31,8 +23,8 @@ module runsUtils {
     }
 
     pure def sharesGained(before: State, after: State, creator: Addr, poolKey: PoolId): int = {
-        val beforeShares = before.poolShares.get(creator).getOrElse(poolKey, 0)
-        val afterShares = after.poolShares.get(creator).getOrElse(poolKey, 0)
+        val beforeShares = before.poolShares.getOrElse((creator, poolKey), 0)
+        val afterShares = after.poolShares.getOrElse((creator, poolKey), 0)
         afterShares - beforeShares
     }
 
