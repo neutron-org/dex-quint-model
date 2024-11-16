@@ -161,6 +161,51 @@ module violationRuns {
             assert(bobWithdrew - bobDeposited > 5)
         })
     
+    
+    run noLossOnTranchesViolationRun = 
+        val trancheKey = {
+        makerToken: "C",
+        takerToken: "A",
+        sellTick: -68517,
+        id: 1
+        }
+        init
+        .then(
+            val placeMsg = placeLimitMsg("Alice", trancheKey.makerToken, trancheKey.takerToken, trancheKey.sellTick, 580)
+            val res = placeLimitOrder(state, placeMsg)
+            all {
+                state' = res.state,
+                assert(res.error == "nil"),
+                assert(res.state.tranchesShares.get(("Alice", trancheKey)).sharesOwned == 580),
+                assert(res.state.tranches.get(trancheKey).reservesMaker == 580),
+                assert(res.state.tranches.get(trancheKey).reservesTaker == 0)
+            }
+        )
+        .then(
+            val swapMsg = {creator: "Bob", tokenPair: ("A", "C"), amount: 2, limitPriceTick: trancheKey.sellTick}
+            val res = singlehopSwap(state, swapMsg)
+            all{
+                state' = res.state,
+                assert(res.state.tranchesShares.get(("Alice", trancheKey)).sharesOwned == 580),
+                assert(res.state.tranches.get(trancheKey).reservesMaker == 0),
+                assert(res.state.tranches.get(trancheKey).reservesTaker == 1)
+            }
+        )
+        .then(
+            val withdrawMsg = {creator: "Alice", trancheKey: trancheKey}
+            val res = withdrawLimitOrder(state, withdrawMsg)
+            all{
+                state' = res.state,
+                assert(res.state.tranchesShares.get(("Alice", trancheKey)).sharesWithdrawn == 580),
+                assert(res.state.tranches.get(trancheKey).reservesMaker == 0),
+                assert(res.state.tranches.get(trancheKey).reservesTaker == 1),
+                val placementValue = res.state.bookkeeping.tranches.placements.get(("Alice", trancheKey))
+                val withdrawnValue = res.state.bookkeeping.tranches.withdrawals.get(("Alice", trancheKey))
+                assert(placementValue - withdrawnValue == 580)
+                
+            }
+        )
+    
     // // ------ The run illustrating the violation of the [POOL-RATIO-CONSTANT] property
     // // The runs showcases how a reserves ratio changed from
     // // 1/73 = 0.0136 to 4/724 = 0.0055

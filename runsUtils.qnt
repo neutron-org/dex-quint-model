@@ -22,6 +22,16 @@ module runsUtils {
         autoswap: doAutoswap
     }
 
+    pure def placeLimitMsg(creator: Addr, maker: Token, taker: Token, tick: TickIndex, amount: int): PlaceLimitOrderMsg = {
+        creator: creator,
+        tokenIn: maker,
+        tokenOut: taker,
+        amountIn: amount,
+        sellTick: tick,
+        orderType: GoodTillCancelled,
+        maxAmountOut: 0
+    }
+
     pure def sharesGained(before: State, after: State, creator: Addr, poolKey: PoolId): int = {
         val beforeShares = before.poolShares.getOrElse((creator, poolKey), 0)
         val afterShares = after.poolShares.getOrElse((creator, poolKey), 0)
