@@ -233,7 +233,7 @@ module Dex {
     pure def advanceBlocks(state: State, numBlocks: int): Result = {
         val newBlock = state.blockNumber + numBlocks
         val updatedTranches = state.tranches.transformValues(tranche => {
-             if (tranche.mayExpire() and tranche.expirationTime < newBlock)
+             if (tranche.mayExpire() and tranche.expirationTime <= newBlock)
                  { ...tranche, isActive: false }
              else
                tranche
