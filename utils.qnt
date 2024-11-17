@@ -72,6 +72,10 @@ module utils {
             | Some(t) => t
             | None => MAX_TICK
         }
+    
+    pure def computeUnitTolerance(tick: TickIndex): int = 
+        if (tick >= 0) 1 else computeDepositValue((0,1), tick).ceil()
+
 
     pure def computePoolValue(reserves: (int, int), token0SellTick: int): Dec =         
         val token0SellPrice = priceFromTick(token0SellTick)

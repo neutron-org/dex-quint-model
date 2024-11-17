@@ -278,7 +278,7 @@ module postconditions {
 
         // There can be up to one off-by-one error per swap
         // Adding multiplication by 10 to allow for multiple roundings in calculations  per single swap.
-        pure val tolerance = debug("tolerance", swaps.size()*10)
+        pure val tolerance = debug("tolerance", swaps.size()*computeUnitTolerance(-tranche.sellTick))
         pure val expected = debug("expected: ", before.bookkeeping.tranches.proceedsToBeWithdrawn.getOrElse((creator, trancheKey), 0))
         pure val diff = debug("diff", abs(withdrawnAmountTakerToken - expected))
         diff <= tolerance
@@ -315,10 +315,11 @@ module postconditions {
             //  TODO: If there were swaps, the user collected also the fee on those swaps
             val totalWithdrawn = debug("totalWithdrawn: ", computeDepositValue(withdrawn, poolId.tick).truncate())
             val totalDeposited = debug("totalDeposited: ", depositedValue)
-             if (swaps != Set()) totalWithdrawn + TOLERANCE >= totalDeposited
+            val tol = TOLERANCE * computeUnitTolerance(poolId.tick)
+             if (swaps != Set()) totalWithdrawn + tol >= totalDeposited
              // Otherwise, the user withdrew no less value than deposited
              else 
-                abs(totalWithdrawn - totalDeposited) <= TOLERANCE
+                abs(totalWithdrawn - totalDeposited) <= tol
                              
        )
 

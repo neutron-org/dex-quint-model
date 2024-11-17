@@ -275,10 +275,11 @@ module baseDexEvolution {
             pure val totalPlaced = (placedAmount, 0)
             pure val totalWithdrew = (canceledAmounts._1, withdrewAmount + canceledAmounts._2)
 
-            pure val placedValue = computeDepositValue(totalPlaced, key.sellTick)
-            pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick)
+            pure val placedValue = computeDepositValue(totalPlaced, key.sellTick).truncate()
+            pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick).truncate()
 
-            approx_gte(withdrew, placedValue, fromInt(5))
+            withdrew + TOLERANCE*computeUnitTolerance(key.sellTick) > placedValue
+            
         }
 
         state.tranchesShares.keys().forall(((addr, key)) => {
