@@ -18,14 +18,22 @@ module baseDexEvolution {
     }
 
     action step: bool = any {
-        placeLimitOrderAction(assignResult),
-        cancelLimitOrderAction(assignResult),
-        withdrawLimitOrderAction(assignResult),
-        withdrawPoolAction(assignResult),
-        depositAction(assignResult),
-        singlehopSwapAction(assignResult),
-        advanceTimeAction(assignResult),
+        placeLimitOrderAct,
+        cancelLimitOrderAct,
+        withdrawLimitOrderAct,
+        withdrawPoolAct,
+        depositPoolAct,
+        singlehopSwapAct,
+        advanceTimeAct,
     }
+
+    action placeLimitOrderAct = placeLimitOrderAction(assignResult)
+    action cancelLimitOrderAct = cancelLimitOrderAction(assignResult)
+    action withdrawLimitOrderAct = withdrawLimitOrderAction(assignResult)
+    action withdrawPoolAct = withdrawPoolAction(assignResult)
+    action depositPoolAct = depositAction(assignResult)
+    action singlehopSwapAct = singlehopSwapAction(assignResult)
+    action advanceTimeAct = advanceTimeAction(assignResult)
 
     action assignResult(result: Result, msg: Message): bool =
         state' = result.state
