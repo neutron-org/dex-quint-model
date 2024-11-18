@@ -320,9 +320,9 @@ To assess the quality of the generated traces, we have created predicates descri
 Overall, we ran 100000 simulations, each of the length 50.
 At every state of the simulation, we inspected the invariants described above.
 We tracked and confirmed that the following properties were true:
- - A tranche was exhausted through cancellation (true in ~50% of all explored states).
- - A tranche was exhausted through a series of withdrawals (true in ~30% of all explored states).
- - A single tranche was shared by multiple users (true in ~30% of all explored states).
+ - A tranche was exhausted through cancellation (true in ~60% of all explored states).
+ - A tranche was exhausted through a series of withdrawals (true in ~7% of all explored states).
+ - A single tranche was shared by multiple users (true in ~10% of all explored states).
  - A single swap could potentially use liquidity from both a tranche and a pool (true in ~3% of all explored states).
 
  Descriptively, we saw among the inspected scenarios interactions of swaps with both pools and tranches, as well as multiple users placing their orders, withdrawing proceeds repeatedly and cancelling their placements.
