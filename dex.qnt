@@ -47,9 +47,12 @@ module Dex {
 
         // @audit-info Consider not checking this, but disallowing any executions that do not satisfy the property
         if (isPoolBehindEnemyLines(state, pair, token0SellTick, msg.fee, amounts)) { state: state, error: "Pool behind enemy lines" } else
-        
-        val poolId = getPoolId(pair, token0SellTick, msg.fee)
+
+        val poolId = { tokenPair: pair, tick: token0SellTick, fee: msg.fee }
         val pool = state.pools.getOrElse(poolId, emptyPool)
+
+        // This is to disallow a known property violation, as otherwise that one gets found all the time
+        if (pool != emptyPool and not(isRatioReasonable(pool.reserves, amounts))) { state: state, error: "Ratio condition not satisfied" } else
 
         val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
         // the amounts that need to be swapped

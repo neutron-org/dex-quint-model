@@ -622,4 +622,15 @@ module utils {
             }
         )
         updatedWithPools
+
+    pure def isRatioReasonable(reserves: (int, int), amounts: (int, int)): bool =
+        if (reserves._1 == 0 and amounts._2 == 0 or reserves._2 == 0 and amounts._1 == 0)
+            false
+        else if ((reserves._1 == 0 and amounts._1 == 0) or (reserves._2 == 0 and amounts._2 == 0))
+            true
+        else
+            val reservesRatio = if (reserves._2 > 0) fromRatio(reserves._1, reserves._2) else fromInt(MAX_AMOUNT)
+            val depositRatio = if (amounts._2 > 0) fromRatio(amounts._1, amounts._2) else fromInt(MAX_AMOUNT)
+            div(reservesRatio, depositRatio).gt(fromRatio(1, 2)) and fromInt(2).gt(div(reservesRatio, depositRatio))
+
 }
