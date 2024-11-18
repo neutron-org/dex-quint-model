@@ -18,7 +18,7 @@ As a starting point to building the model, we used the following material:
   ```bluespec
 type State = {
     tranches: TrancheKey -> Tranche,
-    tranchesShares: Shares,        
+    tranchesShares: Shares,
 
     pools: PoolId -> Pool,
     poolShares: Addr -> PoolId -> int,
@@ -26,7 +26,7 @@ type State = {
     // balances of all the users in the system
     coins: Coins,
 
-    blockNumber: BlockTime,       
+    blockNumber: BlockTime,
 
     // helper state variables, to be used in invariants
     bookkeeping: TrackedValue
@@ -270,8 +270,23 @@ The first one is by doing bounded model checking---a way to inspect _all possibl
 With Quint, model checking can be done either using a symbolic model checker Apalache, which encodes the whole model as a logical formula and uses a solver to solve it; or using a enumerative model checker TLC, which explores all possible states of the model evolution in a breadth-first manner.
 
 Unfortunately, the model of the DEX, which captures different actions and exact computations in them, could not be meaningfully checked either with Apalache or with TLC.
-To give the idea of the complexity of the input space: there are six parameterized action in the model. 
-Depositing, Single-hop-swapping, and Placing a limit order message each choose from a large number of ticks, amounts, and (for deposits) fees.
+To give the idea of the complexity of the input space.
+- At every step, we choose between 7 actions. For each of them, we also have to non-deterministically choose parameters. In model checking, non-deterministically means that all possibilities are accounted for.
+- If, for every parameter, (ticks, fees, amounts, token, users, etc) we pick from a set of only 2 values (severily constraining the model), it is still too big of a state space.
+  - Considering how many parameters we have for each action of the 7 actions (some og them have more parameters than others):
+    - (2² + 2⁷ + 2⁷ + 2⁵ + 2 + 2 + 2) = 298
+    - This means, for each step in this scenario, we'd have 298 possible transitions to make
+- If we want to model check the model of executions of up to 4 steps, this would have to check 298⁴ = 7886150416 possible states
+  - For a rough estimate of time: We had a simplified version running on TLC, and it was processing ~2269575 states per minute
+  - (7886150416 / 2269575) / 60 ≈ 57.91209379
+  - This would take something on the order of 60 hours to check
+  - Adding one more step: ((298⁵) / 2269575) / 60 ≈ 17257.80395 hours
+
+Our intuition is that 
+  - the chances a bug can be reproduced only using the 2 possible values we pick for each parameter
+  - the chances a bug can be reproduced with 4 steps
+are lower than the chances a bug has of being found by random simulation with more values and 50 steps.
+
 On top of that exponential growth of the state space, the computation involves exponentiation of rationals.
 All that combined made model checking of this model intractable.
 
