@@ -322,7 +322,7 @@ Our hypothesis is that these 5 actions cover all interesting behaviors with resp
 An equivalent decomposition holds for tranches' properties.
 
 In such a restricted setup, where all reorderings of actions can be achieved with ~6000 different reorderings (a size of all permuatations of a set of size 6), the simulation offers confidence that we have inspected all interesting (and poteantially problematic) behaviors.
-Our simulations that used the proposed factorization was run 10000 times and found no property violation.
+Our simulations that used the proposed factorization was run 10000 times and found no property violation on top of those reported already.
 
 
 
