@@ -3,11 +3,11 @@
 Since there were changes to price conventions, spanning documentation, specification, and the code, and we were changing the conventions mid developing the model, I am explicitly outlining them in this document.
 
 ## Vocabulary
-We will be using the notion of a _sell price_. 
+We will be using the notion of a _sell price_.
 If token `A` has sell price `p` (for its counterparty `B`), this means that one `A` is worth `p` `B`s.
 In the context of selling, this means that we are ready to sell one `A` for `p` `B`s.
 
-_Tick_ is the integer representation of the price. 
+_Tick_ is the integer representation of the price.
 A price for tick `t` is calculated as `1.0001^t`.
 
 ## DepositMsg
@@ -41,12 +41,12 @@ The structure `DepositMsg` contains field `token0SellTick`: this is the tick `t`
 
  The message `PlaceLimitOrderMsg` contains the field `sellTick`.
  This is the tick from above.
- 
+
  ## SwapMsg
  Swaps are used to exchange tokens.
  Unlike tranches or pools, swaps do not provide liquidity.
  The `SwapMsg` looks like this
- 
+
  ```
  type SwapMsg = {
     creator: Addr,
@@ -61,6 +61,6 @@ The `limitPriceTick` here encodes the maximum price we are willing to pay for `t
 
 ## Properties of the convention
 
-1. Iterating in order over liquidity ticks gives us liquidity going from the cheapest (to the buyer) to more expensive. 
+1. Iterating in order over liquidity ticks gives us liquidity going from the cheapest (to the buyer) to more expensive.
 2. If we have liquidity `A` with sell price `p`, we can convert `x` `B`s into `A` by `1/p * x = x/p`.
 Similarly, we can convert `y` `A`s into `B`s by `y*p`.

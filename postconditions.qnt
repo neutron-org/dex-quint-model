@@ -292,7 +292,7 @@ module postconditions {
         // How much it should have gotten
         pure val userShares = before.tranchesShares.get((creator, trancheKey))
         pure val tranche = before.tranches.get(trancheKey)
-        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)        
+        pure def proRataShare(x: int): Dec = fromRatio(userShares.sharesOwned * x, tranche.totalMaker)
 
         // allowing for rounding errors
         val tolerance = 1
@@ -318,9 +318,9 @@ module postconditions {
             val tol = TOLERANCE * computeUnitTolerance(poolId.tick)
              if (swaps != Set()) totalWithdrawn + tol >= totalDeposited
              // Otherwise, the user withdrew no less value than deposited
-             else 
+             else
                 abs(totalWithdrawn - totalDeposited) <= tol
-                             
+
        )
 
     /// LP.5: When a single user withdraws 100% of their shares from the pool

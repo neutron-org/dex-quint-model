@@ -60,23 +60,23 @@ module types {
 
     type PlaceLimitOrderMsg = {
         creator: Addr,
-        orderType: LimitOrderType,            
+        orderType: LimitOrderType,
         // we have to choose tickIndex because the log operation is missing
         // @audit-info : If we will really need the log operation, what are our Quint options?
         // semantics: 1 tokenIn = price(sellTick) * 1 tokenOut
-        sellTick: TickIndex, 
+        sellTick: TickIndex,
         // semantics: I want to exchange tokenIn for tokenOut
         tokenIn: Token,
         tokenOut: Token,
         amountIn: int,
         maxAmountOut: int,
     }
-        
+
     type CancelLimitOrderMsg = {
         creator: Addr,
         trancheKey: TrancheKey
     }
-    
+
     type WithdrawLimitOrderMsg = {
         creator: Addr,
         trancheKey: TrancheKey
@@ -92,8 +92,8 @@ module types {
     // @audit-info Is there a way to factor out the two types below? So that
     // Liquidity = LimitOrderTranche | PoolReserves, and then they are defined elsewhere?
     // I tried, but the checker complained about it.
-    type Liquidity = 
-        | LimitOrderTranche(Tranche)                
+    type Liquidity =
+        | LimitOrderTranche(Tranche)
         // @audit-info merge this in the merging session with Manu
         | PoolReserves
 
@@ -148,10 +148,10 @@ module types {
         // balances of all the users in the system
         coins: Coins,
 
-        // we will model time by blocks (integer value). 
-        // In the code, it is done through BlockTime. Departing from that. 
+        // we will model time by blocks (integer value).
+        // In the code, it is done through BlockTime. Departing from that.
         // @audit-info could that cause any issue down the line?
-        blockNumber: BlockTime,       
+        blockNumber: BlockTime,
 
         // helper state variables, to be used in invariants
         bookkeeping: TrackedValue

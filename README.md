@@ -1,9 +1,9 @@
 # Neutron DEX Model
-This repository is a work-in-progress specification of the Neutron DEX module. 
+This repository is a work-in-progress specification of the Neutron DEX module.
 
 - Ongoing modeling: limit orders + pools deposits and their interactions :hourglass:
 
- 
+
 
 ## Repository Structure
 
@@ -49,7 +49,7 @@ Nothing very interesting for the moment.
 Thus, let's run an action, e.g., `placeLimitOrderAction`.
 This will create a non-deterministic `PlaceLimitOrderMsg` and change the `state`.
 
-Alternatively, run `step`: this will pick any step to be executed. 
+Alternatively, run `step`: this will pick any step to be executed.
 For inspecting the choices of nondeterministic values, run
 
 If you want a to experiment with concrete messages, try something like this:

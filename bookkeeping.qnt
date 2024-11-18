@@ -76,12 +76,12 @@ module bookkeeping {
         }
 
         pure val depositValues = t.pools.depositValues
-        pure val newDepositValues = 
+        pure val newDepositValues =
             if (depositValues.has((addr, poolId)))
                 depositValues.setBy((addr, poolId), v => v + pureDepositedValue)
             else
                 depositValues.put((addr, poolId), pureDepositedValue)
-            
+
 
         { ...t, pools: { ...t.pools, deposits: newDeposits, swaps: newSwaps, depositValues: newDepositValues } }
     }
@@ -107,7 +107,7 @@ module bookkeeping {
                 swaps.setByWithDefault(key, s => s.union(Set(diffForKey)), Set())
             })
         })
-        
+
         pure val newProceeds = swapUpdate.tranchesUpdates.keys().fold(t.tranches.proceedsToBeWithdrawn, (proceeds, key) => {
             pure val diffForKey = swapUpdate.tranchesUpdates.get(key)
             tranchesShares.keys().filter(((_addr, k)) => k == key).fold(proceeds, (proceeds, shareKey) => {

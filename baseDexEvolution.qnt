@@ -130,7 +130,7 @@ module baseDexEvolution {
         all {
             require(amount > 0),
             val result = placeLimitOrder(state, msg)
-            processResult(result, PlaceLimitOrder(msg))            
+            processResult(result, PlaceLimitOrder(msg))
         }
 
     action singlehopSwapAction(processResult: (Result, Message) => bool): bool = all {
@@ -247,7 +247,7 @@ module baseDexEvolution {
     val makerValuePreserved = true
 
     // Invariant: pool reserves are always greater or equal to zero
-    val nonNegativePoolReserves = state.pools.keys().forall(poolId => 
+    val nonNegativePoolReserves = state.pools.keys().forall(poolId =>
         val reserves = state.pools.get(poolId).reserves
         reserves._1 >= 0 and reserves._2 >= 0
     )
@@ -287,7 +287,7 @@ module baseDexEvolution {
             pure val withdrew = computeDepositValue(totalWithdrew, key.sellTick).truncate()
 
             withdrew + TOLERANCE*computeUnitTolerance(key.sellTick) > placedValue
-            
+
         }
 
         state.tranchesShares.keys().forall(((addr, key)) => {
@@ -296,11 +296,11 @@ module baseDexEvolution {
         })
     }
 
-    /* 
+    /*
     The total amount of coins in the system is always preserved
      */
-    val coinsPreserved = 
-        val initCoins = totalCoins(initState)        
+    val coinsPreserved =
+        val initCoins = totalCoins(initState)
         totalCoins(state) == initCoins
 
     /* WITNESS PROPERTIES */

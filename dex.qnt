@@ -22,7 +22,7 @@ module Dex {
 
         val updatedReserves = (pool.reserves._1 - outAmounts._1, pool.reserves._2 - outAmounts._2)
         val updatedShares = pool.shares - msg.sharesAmount
-        
+
         val updatedCoins = state.coins
             .setBy((msg.creator, pair._1), old => old + outAmounts._1)
             .setBy((msg.creator, pair._2), old => old + outAmounts._2)
@@ -69,7 +69,7 @@ module Dex {
         val updatedPools = state.pools.put(
             poolId,
             {
-                reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2), 
+                reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2),
                 shares: pool.shares + outShares
             }
         )
@@ -86,7 +86,7 @@ module Dex {
             bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue),
         })
     }
-    
+
     pure def placeLimitOrder(state: State, msg: PlaceLimitOrderMsg): Result = {
         val maxBuyTick = - msg.sellTick
         val fulfilledOrderInfo = swap(
@@ -95,36 +95,36 @@ module Dex {
             state.pools,
             msg.amountIn,
             maxBuyTick,
-            msg.maxAmountOut            
+            msg.maxAmountOut
         )
-        
+
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
         val remainingAmount = fulfilledOrderInfo.remainingAmount
         val tokenOutReceived = fulfilledOrderInfo.outAmount
 
         if (remainingAmount > 0 and msg.orderType == FillOrKill) { state: state, error: "FillOrKill: not enough liquidity" } else
-     
+
         // 1) update the pools states
         val updatedPools = updatePools(state.pools, poolsUpdateInfo)
 
         // 2) update the tranches states
         val tradeUpdatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, tranchesUpdateInfo)
         // 2a) handle the remaining amount and update tranches accordingly
-        val tranchesSharesUpdate = 
-            // no new updates to tranches if the type is ImmediateOrCancel, or 
+        val tranchesSharesUpdate =
+            // no new updates to tranches if the type is ImmediateOrCancel, or
             // if the remaining amount is 0
-            if (msg.orderType == ImmediateOrCancel or remainingAmount == 0) 
+            if (msg.orderType == ImmediateOrCancel or remainingAmount == 0)
                 { tranches: tradeUpdatedTranches, tranchesShares: state.tranchesShares, key: None }
             else //if there is something to be placed
                 val expirationBlock = match msg.orderType {
                     | GoodTillTime(block_time) => block_time
                     | JustInTime => state.blockNumber + 1
-                    | GoodTillCancelled => -1 
+                    | GoodTillCancelled => -1
                     | _ => -2 // unreachable
                 }
                 placeRemainingLimitOrderAmount(tradeUpdatedTranches, state.tranchesShares, msg, remainingAmount, expirationBlock)
-        
+
         val tokenInSpent = tokenInSpentBasedOnOrderType(msg.orderType, msg.amountIn, remainingAmount)
 
         // 3) update the user's balance
@@ -152,7 +152,7 @@ module Dex {
             state.pools,
             inAmount,
             msg.limitPriceTick,
-            0            
+            0
         )
         val poolsUpdateInfo = fulfilledOrderInfo.poolUpdates
         val tranchesUpdateInfo = fulfilledOrderInfo.tranchesUpdates
@@ -187,7 +187,7 @@ module Dex {
         val withdrawnAmounts = computeWithdrawAmountTakerToken(tranche, usersTrancheShares)
         val withdrawnTaker = withdrawnAmounts.taker_token
         val withdrawnShares = withdrawnAmounts.shares
-        
+
         // 1) user's taker token balance needs to be updated
         val updatedCoins = state.coins.setBy((msg.creator, tranche.takerDenomination), coins => coins + withdrawnTaker)
         // 2) the reserves taker denom need to be updated
@@ -211,7 +211,7 @@ module Dex {
         // 1a) calculate the amount of the tranche maker token that the user should receive back
         val cancelAmountMakerToken = computeCancelAmountMakerToken(tranche, usersTrancheShares)
         // 1b) calculate the amount of the tranche taker token that the user should receive back (withdraw equivalent)
-        val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche, usersTrancheShares).taker_token            
+        val withdrawAmountTakerToken = computeWithdrawAmountTakerToken(tranche, usersTrancheShares).taker_token
 
         // 2) update the tranche reserves
         val updatedTranche = {

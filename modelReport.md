@@ -33,12 +33,12 @@ type State = {
 }
 ```
 
-Fields `tranches` and `tranchesShares` contain the information on the state of the tranches and users' ownership in them. 
-The same for pools is achieved by `pools` and `poolShares`. 
+Fields `tranches` and `tranchesShares` contain the information on the state of the tranches and users' ownership in them.
+The same for pools is achieved by `pools` and `poolShares`.
 The field `coins` keeps track of the state of users' funds, and `blockNumber` tracks the blocks.
 Finally, `bookkeeping` contains helper variables, that will be used for inspecting desired properties (e.g., total value deposited by a user).
 
-Each field has a type. 
+Each field has a type.
 As an example, `pools` is a mapping from `PoolId` into `Pool` type, which are defined by
 ```bluespec
 type PoolId = {
@@ -84,7 +84,7 @@ action step: bool = any {
     advanceTimeAct,
 }
 ```
-In short, `any` of the seven listed things may happen: a user can place a new limit order, or withdraw or cancel from an existing one; a user can deposit into a pool or withdraw from an existing one; a user can swap using available liquidity; or a time may progress. 
+In short, `any` of the seven listed things may happen: a user can place a new limit order, or withdraw or cancel from an existing one; a user can deposit into a pool or withdraw from an existing one; a user can swap using available liquidity; or a time may progress.
 
 As an illustration, let's look at the `withdrawPoolAction` (called directly by `withdrawPoolAct`):
 
@@ -122,24 +122,24 @@ The `creatorAndPool` is a non-deterministic (`nondet`) value obtained by choosin
 
 The `nondet` variable `withdrawAll` is a slight optimization: we want to bias the action to occasionally withdraw all the shares (as we privilege this choice over choices with all possible share values).
 Thus, if `withdrawAll` is true, we will withdraw all existing shares, and otherwise a `nondet` value `partialWithdrawAmount`.
-The message `msg` is formed with all the choices, and executed on the current `state`. 
+The message `msg` is formed with all the choices, and executed on the current `state`.
 Finally, the `state` variable is updated with the result of the execution.
 (`state'` means "the variable after the transition".)
 
 ### Transitions Business Logic
 
-While the action defines the choices on what to execute, the whole business logic is contained in the function `withdrawPool` (and similar), which can be found in [dex.qnt](./dex.qnt). 
+While the action defines the choices on what to execute, the whole business logic is contained in the function `withdrawPool` (and similar), which can be found in [dex.qnt](./dex.qnt).
 They all share the same signature,  transforming the pair `(State, Message)` into (the next) `State`.
 In that regard, all these functions are pure: there is no non-determinism and no accessing the `state` variable: all of this is done in the transition actions described above.
 
 ### Modeling Choices and Simplifications
-In the model, we made the following simplifying choices: 
+In the model, we made the following simplifying choices:
  1. We did not model a multi-hop swap. Instead, we achieve it by consecutive applications of a single-hop swap.
  2. We did not add the feature of the user limiting the maximum amount to receive from the placed limit order message.
  3. In the model, users always specify price ticks instead of direct prices (this choice has to do with technical limitations of Quint, the lack of the `logarithm` function).
 
 ## 3. Properties of Interest
-In this section we describe properties we encoded in the model and checked if they held. 
+In this section we describe properties we encoded in the model and checked if they held.
 They can be divided into state properties and transition properties.
 
 ### State Properties
@@ -147,7 +147,7 @@ They can be divided into state properties and transition properties.
 1. [DEPOSIT-PROFITS] For a user who has deposited to the pool `p` and who has withdrawn all their shares from `p`, the following holds:
  - If there were swaps through `p`, the user has withdrawn more value than deposited
  - If there were no swaps through `p`, the user has withdrawn the same value as deposited
- - The user withdrew no less value than deposited. 
+ - The user withdrew no less value than deposited.
 
  Note: The value deposited is considered to be value after the (potential) autoswap fee has been paid.
 
@@ -160,9 +160,9 @@ They can be divided into state properties and transition properties.
             val totalDeposited = state.bookkeeping.pools.depositValues.getOrElse((creator, poolId), 0)
             val withdrawn = state.bookkeeping.pools.withdrawals.getOrElse((creator, poolId), (0, 0))
             val swaps = state.bookkeeping.pools.swaps.getOrElse((creator, poolId), Set())
-            val totalWithdrawn = computeDepositValue(withdrawn, poolId.tick).truncate()            
+            val totalWithdrawn = computeDepositValue(withdrawn, poolId.tick).truncate()
             val tol = TOLERANCE * computeUnitTolerance(poolId.tick)
-            // If there were swaps, the user withdrew more value than deposited                         
+            // If there were swaps, the user withdrew more value than deposited
             if (swaps != Set()) totalWithdrawn + tol >= totalDeposited
             // Otherwise, the user withdrew no less value than deposited
             else abs(totalWithdrawn - totalDeposited) <= tol
@@ -215,18 +215,18 @@ All transitions are inspected for the state changes as described in the specific
 
  After developing the model, we have used it to analyze the properties of the system.
  Any violation to the property from the model called for closer inspection.
- Some violations pointed to disrepancies between the model and the input, some to discrepancies between the model&input and the implementation, and some to actual violations of the properties in the implementation. 
+ Some violations pointed to disrepancies between the model and the input, some to discrepancies between the model&input and the implementation, and some to actual violations of the properties in the implementation.
 
- 
- 1. [DEPOSIT-PROFITS]: 
 
-The reason for why this propertiy was violated has to do with rounding when withdrawing. 
-Repeated rounding may make it happen so that the loss grows. 
+ 1. [DEPOSIT-PROFITS]:
+
+The reason for why this propertiy was violated has to do with rounding when withdrawing.
+Repeated rounding may make it happen so that the loss grows.
 An example run is given in `violationRuns.qnt::noLossViolationRoundingRun`.
 
 In order to disregard rounding errors, we have phrased a similar property that included tolerance for rounding errors:
 
-[NO-LOSS-TOLERANCE] Assuming that we allow for the tolerance proportonal to the number of swaps and the value of a pair of unit tokens (to counter off-by-one errors), the user withdraws no less value from the pool than deposited. 
+[NO-LOSS-TOLERANCE] Assuming that we allow for the tolerance proportonal to the number of swaps and the value of a pair of unit tokens (to counter off-by-one errors), the user withdraws no less value from the pool than deposited.
 
 However, even this property does not hold.
 The problem occurs when the total value of reserves becomes much larger than the total number of shares. When withdrawing all their shares from the pool, the user receives `userShares * (totalPoolValue / totalPoolShares)`. Assuming an off-by-one error in `userShares`, the max possible error is `0.99 * (totalPoolValue / totalPoolShares)`.
@@ -235,8 +235,8 @@ One way in which `totalPoolValue` and `totalPoolShares` can substantially diverg
 
 a. Bob deposits `(smallAmount, 0)` in the pool with a very large fee.
 
-b. Alice deposits `(0, largeAmount)` with (default) autoswap enabled to the same pool. 
-This translates into calculating shares as if Alice has first converted the whole `largeAmount`. 
+b. Alice deposits `(0, largeAmount)` with (default) autoswap enabled to the same pool.
+This translates into calculating shares as if Alice has first converted the whole `largeAmount`.
 Thus, Alice receives very few shares, and the total amount of shares is much smaller than the pool value (because the majority of the value is provided by the autoswap fee).
 
 c. Alice withdraws all of her shares, and receives a much smaller value than what she deposited (accounting for the fee paid for the swap).
@@ -248,10 +248,10 @@ An example run is given in `violationRuns.qnt::noLossViolationAutoswapRun`.
 A potential attack is a user frontrunning any extremely large deposit (bigger than the pool's size) by changing the pool's ratio so as to be able to take advantage of the described behavior.
 Alternatively, and much more lucrative, is a user frontrunning any initial deposit to a new pool.
 
-NOTE: This particular violation seems to be stemming from the assumption that every pool's value will be significantly larger than the deposit value. 
+NOTE: This particular violation seems to be stemming from the assumption that every pool's value will be significantly larger than the deposit value.
 Indeed, the calculation for the autoswap fee starts with the goal of bringing deposit amounts to match the ration of the pool, where sometimes it would be easier to do it the other way round.
 
-2. [POOL-RATIO-CONSTANT] Repeated rounding can change the ratio of the pool significantly (even without autoswap disabled). 
+2. [POOL-RATIO-CONSTANT] Repeated rounding can change the ratio of the pool significantly (even without autoswap disabled).
 In the `violationRuns.qnt::autoswapIssueRun`, we give an example in which the ratio starts at 0.0136 and is then changed into 0.0055 within 4 steps.
 NOTE: We discussed the issue with the development team and concluded that this violation does not constitute an attack surface, since no free-swap is possible with it.
 
@@ -268,7 +268,7 @@ In the next section, we discuss what kind of confidence we can get about the ove
 
 ### Model Simulation: Size of the Input Space
 Once a model is developed, there are two main ways in going about checking the properties of it.
-The first one is by doing bounded model checking---a way to inspect _all possible behaviors up to a certain length_. 
+The first one is by doing bounded model checking---a way to inspect _all possible behaviors up to a certain length_.
 
 With Quint, model checking can be done either using a symbolic model checker Apalache, which encodes the whole model as a logical formula and uses a solver to solve it; or using a enumerative model checker TLC, which explores all possible states of the model evolution in a breadth-first manner.
 
@@ -285,7 +285,7 @@ To give the idea of the complexity of the input space.
   - This would take something on the order of 60 hours to check
   - Adding one more step: ((298⁵) / 2269575) / 60 ≈ 17257.80395 hours
 
-Our intuition is that 
+Our intuition is that
   - the chances a bug can be reproduced only using the 2 possible values we pick for each parameter
   - the chances a bug can be reproduced with 4 steps
 are lower than the chances a bug has of being found by random simulation with more values and 50 steps.
@@ -304,15 +304,15 @@ Still, in order to hit the most interesting scenarios, it makes sense to reduce 
 ## Model Simulation: Shrinking the State Space
 
 To achieve the goal of reducing the state space breadth without sacrificing the bugs our model can find, we tweaked the following aspects of the model:
- - There is a tension between choosing from large number of ticks (to cover all possible numerical edge cases) and focusing generated scenarios towards dense interplay between tranches and pools. (Otherwise, we may just get many almost independent actions.) 
- Our solution was to nondeterministically pick 3 ticks **at the beginning of each simulation**. 
+ - There is a tension between choosing from large number of ticks (to cover all possible numerical edge cases) and focusing generated scenarios towards dense interplay between tranches and pools. (Otherwise, we may just get many almost independent actions.)
+ Our solution was to nondeterministically pick 3 ticks **at the beginning of each simulation**.
  This allowed for density of interactions within a single simulation, while exploring the whole space of ticks among many simulations.
  - There are some privileged parameter-choices of the actions. For example, a liquidity provider may choose to withdraw any number of their shares from a pool (expressed by `oneOf(1.to(userShares)`). However, the most interesting scenarios happen when the user withdraws all their shares. In a default setup, this would happen too rarely. Thus, we add a Boolean `nondet withdrawAll = oneOf(Set(true, false))` which flips a coin to decide whether to withdraw all shares, or some amount of shares.
- - We also ran some tests that were not completely free ranging. Phrased as runs, they were given a _blueprint_ of the simulation: what sequence of actions needs to happen first, followed by some random choice of actions, and then again followed by predetermined action. 
+ - We also ran some tests that were not completely free ranging. Phrased as runs, they were given a _blueprint_ of the simulation: what sequence of actions needs to happen first, followed by some random choice of actions, and then again followed by predetermined action.
 
 To assess the quality of the generated traces, we have created predicates describing interesting scenarios and then monitored the executions to track how often these interesting predicates were true.
 
-Overall, we ran 100000 simulations, each of the length 50. 
+Overall, we ran 100000 simulations, each of the length 50.
 At every state of the simulation, we inspected the invariants described above.
 We tracked and confirmed that the following properties were true:
  - A tranche was exhausted through cancellation (true in ~50% of all explored states).
@@ -324,7 +324,7 @@ We tracked and confirmed that the following properties were true:
  The type of interaction that caused the recent bug in the DEX having to do with cancellations was found among the generated traces.
 
 Another modification that enabled us to explore more breadth was projecting the model onto only a part of the available actions.
-This modification comes from the insight that certain kinds of bugs do not distinguish between all individual setups of numerical bugs. 
+This modification comes from the insight that certain kinds of bugs do not distinguish between all individual setups of numerical bugs.
 Rather, what matters are relations between numerical choices.
 
 For instance:
@@ -334,7 +334,7 @@ For instance:
 
 Thus, some of the interesting properties may be examined by factoring out only parts of the model.
 In such setup, the simulation may provide good coverage:
-When checking only for pools' properties, we choose among three actions: `SinglehopSwap`, `Deposit`, `WithdrawPool`, of a fixed pool key. 
+When checking only for pools' properties, we choose among three actions: `SinglehopSwap`, `Deposit`, `WithdrawPool`, of a fixed pool key.
 With the previous optimizations, `WithdrawPool` can be seen as two actions, `WithdrawPoolFull` and `WithdrawPoolPartial`, and similarly for the `SinglehopSwap`.
 Our hypothesis is that these 5 actions cover all interesting behaviors with respect to pools.
 An equivalent decomposition holds for tranches' properties.
@@ -347,7 +347,7 @@ Our simulations that used the proposed factorization was run 10000 times and fou
 We have created a Quint model of the Neutron DEX.
 The model captures the essential properties of the DEX, including numerical considerations.
 
-We have used the model to analyze the properties of the system. 
+We have used the model to analyze the properties of the system.
 In the process, we have uncovered violations of the desired properties, as described in section _4. Analysis Results_.
 Preliminary discussions suggest that these violations do not constitute a security vulnerability.
 
@@ -400,7 +400,7 @@ Thus, let's run an action, e.g., `depositPoolAct`.
 This will create a non-deterministic `DepositMsg` and change the `state`.
 Inspect the state again by examining `state.pools`, or `state.bookkeeping` (a non-essential variable, used for providing extra information on interactions with pools and tranches).
 
-Alternatively, run `step`: this will pick any step to be executed. 
+Alternatively, run `step`: this will pick any step to be executed.
 
 If you want a to experiment with concrete messages, try something like this:
 
@@ -437,5 +437,5 @@ The Quint simulator creates a number of behaviors allowed by the model. You can 
 `quint run --max-samples=1 --max-steps=20 --out-itf=out.itf.json dexEvolution.qnt`
 After doing that, inspect the trace in the file `out.itf.json` ->  in order to to visualize trace, you should also install the [VSCode plugin for visualizing traces](https://marketplace.visualstudio.com/items?itemName=informal.itf-trace-viewer).
 
-To task the simulator with inspecting individual invariants, give it with the argument `--invariant`. 
+To task the simulator with inspecting individual invariants, give it with the argument `--invariant`.
 For instance, `quint run --max-samples=1 --max-steps=20 --out-itf=out.itf.json --invariant=allInvariants dexEvolution.qnt`.

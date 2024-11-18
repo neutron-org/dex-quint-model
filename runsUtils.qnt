@@ -11,7 +11,7 @@ module runsUtils {
     import postconditions.* from "postconditions"
 
     pure val DEFAULT_CREATOR: Addr = "Alice"
-    pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")    
+    pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
 
     pure def depositMsgPool(creator: Addr, poolKey: PoolId, amountPair: (int, int), doAutoswap: bool): DepositMsg = {
         creator: creator,
@@ -44,7 +44,7 @@ module runsUtils {
         afterBalance - beforeBalance
     }
 
-    pure def withdrawMsgPool(creator: Addr, poolKey: PoolId, sharesAmount: int): WithdrawPoolMsg = 
+    pure def withdrawMsgPool(creator: Addr, poolKey: PoolId, sharesAmount: int): WithdrawPoolMsg =
         {
             creator: creator,
             tokenPair: poolKey.tokenPair,

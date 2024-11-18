@@ -9,7 +9,7 @@ module violationRuns {
     import baseDexEvolution.* from "baseDexEvolution"
     import postconditions.* from "postconditions"
     import runsUtils.* from "runsUtils"
-    
+
     run noLossViolationAutoswapRun =
         val poolKey = { fee: 20000, tick: -100, tokenPair: ("A", "B") }
         init
@@ -20,7 +20,7 @@ module violationRuns {
                 state' = res.state,
                 assert(res.state.pools.get(poolKey).reserves == (11,0)),
                 assert(res.state.poolShares.get(("Bob",poolKey)) == 11),
-                
+
             }
         )
         .then(
@@ -38,7 +38,7 @@ module violationRuns {
             all {
                 state' = res.state,
                 assert(res.state.pools.get(poolKey).reserves == (11,2215-184)),
-                assert(res.state.poolShares.get(("Alice", poolKey)) == 0)                
+                assert(res.state.poolShares.get(("Alice", poolKey)) == 0)
             }
         )
         .then(
@@ -53,14 +53,14 @@ module violationRuns {
 
     // ------ The run illustrating the violation of the [NO-LOSS] and [NO-GAIN] properties
     // It is a cleared version of the generated trace violations/noLossViolation.itf.json
-    run noLossViolationRoundingRun = 
+    run noLossViolationRoundingRun =
         val key = { fee: 6, tick: -9, tokenPair: ("B", "C") }
         init.then(
             val msg = depositMsgPool("Bob", key, (211,337), true)
             val res = deposit(state, msg)
             all {
                 state' = res.state,
-                assert(res.error == "nil"),                
+                assert(res.error == "nil"),
                 assert(sharesGained(state, res.state, "Bob", key) == 548)
             })
         .then(
@@ -140,7 +140,7 @@ module violationRuns {
             val carolWithdraws = computeDepositValue(state.bookkeeping.pools.withdrawals.get(("Carol", key)), key.tick).truncate()
             all {
              state' = state,
-             state.poolShares.get(("Carol", key)) == 0,             
+             state.poolShares.get(("Carol", key)) == 0,
              carolDeposited - carolWithdraws == 6
             })
         .then(
@@ -160,9 +160,9 @@ module violationRuns {
             // Bob has gained something (even though there were no swaps, so he gained what Carol has lost)
             assert(bobWithdrew - bobDeposited > 5)
         })
-    
-    
-    run noLossOnTranchesViolationRun = 
+
+
+    run noLossOnTranchesViolationRun =
         val trancheKey = {
         makerToken: "C",
         takerToken: "A",
@@ -202,19 +202,19 @@ module violationRuns {
                 val placementValue = res.state.bookkeeping.tranches.placements.get(("Alice", trancheKey))
                 val withdrawnValue = res.state.bookkeeping.tranches.withdrawals.get(("Alice", trancheKey))
                 assert(placementValue - withdrawnValue == 580)
-                
+
             }
         )
-    
+
     // // ------ The run illustrating the violation of the [POOL-RATIO-CONSTANT] property
     // // The runs showcases how a reserves ratio changed from
     // // 1/73 = 0.0136 to 4/724 = 0.0055
     // // In the inverse, this is going from 73 to 181
-    
-    run autoswapIssueRun = 
+
+    run autoswapIssueRun =
         val testPoolKey: PoolId = { fee: 4, tick: -2, tokenPair: DEFAULT_TOKEN_PAIR }
         val creator = DEFAULT_CREATOR
-        init 
+        init
         .then(
             val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (1, 73), false)
             val res = deposit(state, depositMsg)
@@ -248,5 +248,5 @@ module violationRuns {
                 state' = res.state,
                 assert(updatedPool.reservesRatio() == (4, 724))
             })
-            
+
     }
