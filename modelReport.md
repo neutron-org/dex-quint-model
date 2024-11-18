@@ -368,7 +368,7 @@ In the process of developing the model, we have discovered many misleading thing
 With the formal model, it gets much less likely to introduce a mistake due to the model's internal consistency checks.
 
 Thus, one direction of future work may be to create a new, dynamic documentation: it could use executable Quint in the explanations and examples, enabling users to try out their own examples (rather than relying on the provided, constant examples).
-Another exciting direction is using the developed model to write integration tests for the implementation, establishing a firmer connection between the model and the code.
+Another exciting direction is using the developed model to write integration tests for the implementation, establishing a firmer connection between the model and the code, and increasing the test coverage with as many generated tests as needed.
 
 ## Appendix
 
