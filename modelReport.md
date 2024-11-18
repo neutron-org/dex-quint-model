@@ -1,5 +1,5 @@
 # Neutron Dex Model
-Motivated by a desire to understand better all the edge cases (and potential problems) of the Neutron's decentralized exchange (Dex) logic , Neutron and Informal Systems set off to model the Dex in [Quint](https://quint-lang.org/).
+Motivated by a desire to understand better all the edge cases (and potential problems) of the Neutron's decentralized exchange (Dex) logic, Neutron and Informal Systems set off to model the Dex in [Quint](https://quint-lang.org/).
 This document describes the model, the properties we analyzed, and the analysis result.
 
 ## 1. Input
@@ -46,7 +46,7 @@ type PoolId = {
     // Pool's tick is the token0 sell tick, that is: 1 Token0 = price(tick)* 1 Token1
     tick: TickIndex,
     fee: Fee
-    }
+}
 
 type Pool = {
     reserves: (int, int),
@@ -74,15 +74,15 @@ The initial state is very simple, with nothing in pools or tranches:
 ### Model Evolution: Transition
 Possible transitions are defined by the action predicate `step`:
 ```bluespec
-    action step: bool = any {
-        placeLimitOrderAct,
-        cancelLimitOrderAct,
-        withdrawLimitOrderAct,
-        withdrawPoolAct,
-        depositAct,
-        singlehopSwapAct,
-        advanceTimeAct,
-    }
+action step: bool = any {
+    placeLimitOrderAct,
+    cancelLimitOrderAct,
+    withdrawLimitOrderAct,
+    withdrawPoolAct,
+    depositAct,
+    singlehopSwapAct,
+    advanceTimeAct,
+}
 ```
 In short, `any` of the seven listed things may happen: a user can place a new limit order, or withdraw or cancel from an existing one; a user can deposit into a pool or withdraw from an existing one; a user can swap using available liquidity; or a time may progress. 
 
@@ -182,7 +182,7 @@ We also checked for a sequence of other transition properties that can be viewed
 5. All amounts of pool shares and reserves, tranches shares and reserves, and user coins are non-negative.
 
 ### Transition Properties
-Transition properties describe the relation between a state `before` and and a staet `after` a transition happened, and their signature is `(State, Message, State): bool`.
+Transition properties describe the relation between a state `before` and and a statr `after` a transition happened, and their signature is `(State, Message, State): bool`.
 All transitions are inspected for the state changes as described in the specification. Furthermore, there are specific properties to be expected after transitions.
 
 7. When a user swaps using a `SinglehopSwapMsg` message:
@@ -230,9 +230,9 @@ In order to disregard rounding errors, we have phrased a similar property that i
 However, even this property does not hold.
 The problem occurs when the total value of reserves becomes much larger than the total number of shares. When withdrawing all their shares from the pool, the user receives `userShares * (totalPoolValue / totalPoolShares)`. Assuming an off-by-one error in `userShares`, the max possible error is `0.99 * (totalPoolValue / totalPoolShares)`.
 
-One way in which totalPoolValue and totalPoolShares can substantially diverge in not too many steps is the following:
+One way in which `totalPoolValue` and `totalPoolShares` can substantially diverge in not too many steps is the following:
 
-a. Bob deposits `(smallAmount, 0)` in the pool with a very large fee fee.
+a. Bob deposits `(smallAmount, 0)` in the pool with a very large fee.
 
 b. Alice deposits `(0, largeAmount)` with (default) autoswap enabled to the same pool. 
 This translates into calculating shares as if Alice has first converted the whole `largeAmount`. 
@@ -266,7 +266,7 @@ In the next section, we discuss what kind of confidence we can get about the ove
 
 ### Model Simulation: Interpretation of Finding no Violations
 Once a model is developed, there are two main ways in going about checking the properties of it.
-The first one is by doing bounded model checking---a way to inspect _all possible beahiors up to a certain length_. 
+The first one is by doing bounded model checking---a way to inspect _all possible behaviors up to a certain length_. 
 
 With Quint, model checking can be done either using a symbolic model checker Apalache, which encodes the whole model as a logical formula and uses a solver to solve it; or using a enumerative model checker TLC, which explores all possible states of the model evolution in a breadth-first manner.
 
@@ -388,7 +388,7 @@ val bobsOrder: PlaceLimitOrderMsg = {
     amountIn: 10,
     sellTick: 19460,
     maxAmountOut: -1
-    }
+}
 ```
 and then `state' = placeLimitOrder(state, bobsOrder).state`.
 
