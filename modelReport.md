@@ -60,17 +60,22 @@ Check the other types in [types.qnt](./types.qnt).
 ### Model Evolution: Initial State
 The initial state is very simple, with nothing in pools or tranches:
 ```bluespec
- state' = {
+pure val initState: State = {
     tranches: Map(),
-    // initCoins contain a fixed, large number of coins for each user
-    coins: initCoins,
-    tranchesShares: CREATORS.mapBy(creator => Map()),
+    coins: tuples(CREATORS, TOKENS).mapBy(_ => INITIAL_CREATOR_BALANCE),
+    tranchesShares: Map(),
     blockNumber: 0,
-    poolShares: CREATORS.mapBy(creator => Map()),
+    poolShares: Map(),
     pools: Map(),
     bookkeeping: emptyTrackedValue
+
+}
+
+action init = {
+    state' = initState,
 }
 ```
+
 ### Model Evolution: Transition
 Possible transitions are defined by the action predicate `step`:
 ```bluespec

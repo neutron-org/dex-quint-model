@@ -55,7 +55,7 @@ module utils {
     }
 
 
-    pure def initState: State = {
+    pure val initState: State = {
         tranches: Map(),
         coins: tuples(CREATORS, TOKENS).mapBy(_ => INITIAL_CREATOR_BALANCE),
         tranchesShares: Map(),

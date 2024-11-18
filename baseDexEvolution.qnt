@@ -13,7 +13,7 @@ module baseDexEvolution {
     var state: State
 
     // STATE MACHINE
-    action init = all {
+    action init = {
         state' = initState,
     }
 
