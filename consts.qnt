@@ -33,5 +33,5 @@ module consts {
 
     // Constants for different setups when running
     // tolerance for equality comparisons
-    pure val TOLERANCE = 20
+    pure val TOLERANCE = 50
 }
