@@ -259,12 +259,11 @@ This leads to situations in which it is possible for a tranche to have some fund
 While the kinds of errors are off-by-one in terms of a token, depending on the price of the maker and the taker, they can be large in terms of the value of the pool.
 For an example, see the `violationRuns.qnt::noLossOnTranchesViolationRun` run.
 
-Similarly to the rounding violation in the pool, an equivalent property, [NO-LOSS-ON-PLACED-TRANCHE] that tolerates rounding errors multiplied by number of steps is not violated.
+For an equivalent property [NO-LOSS-ON-PLACED-TRANCHE], which tolerates rounding errors multiplied by number of steps,  we found no violation.
 
-For all other properties, our analysis found no violation. 
 In the next section, we discuss what kind of confidence we can get about the overall functioning of the system based on these simulation results.
 
-### Model Simulation: Interpretation of Finding no Violations
+### Model Simulation: Size of the Input Space
 Once a model is developed, there are two main ways in going about checking the properties of it.
 The first one is by doing bounded model checking---a way to inspect _all possible beahiors up to a certain length_. 
 
@@ -277,11 +276,19 @@ On top of that exponential growth of the state space, the computation involves e
 All that combined made model checking of this model intractable.
 
 The second option to inspect the model is by performing many random simulations of the model evolution.
+Simulation is a depth-focused search of the state space, compared to the breadth-first approach of model checking.
 While random simulations do not provide guarantees about covering the whole (bounded) state space, they enable inspecting much longer traces.
 Furthermore, with some small interventions into the model, we can guide the simulator to explore the behaviors of interest.
 
-The complexity described above still holds for simulation, and in order to achieve meaningful results, we tweaked the following aspects of the model:
- - There is a tension between choosing from large number of ticks (to cover all possible numerical edge cases) and focusing generated scenarios towards dense interplay between tranches and pools. (Otherwise, we may just get many almost independent actions.) Our solution was to nondeterministically pick 3 ticks **at the beginning of each simulation**. This allowed for density of interactions within a single simulation, while exploring the whole space of ticks among many simulations.
+With large state spaces, it is more productive to explore larger depths (thus: more interactions) than insist on covering the whole breadth (thus, sacrificing some of number choices).
+Still, in order to hit the most interesting scenarios, it makes sense to reduce the breadth as much as possible.
+
+## Model Simulation: Shrinking the State Space
+
+To achieve the goal of reducing the state space breadth without sacrificing the bugs our model can find, we tweaked the following aspects of the model:
+ - There is a tension between choosing from large number of ticks (to cover all possible numerical edge cases) and focusing generated scenarios towards dense interplay between tranches and pools. (Otherwise, we may just get many almost independent actions.) 
+ Our solution was to nondeterministically pick 3 ticks **at the beginning of each simulation**. 
+ This allowed for density of interactions within a single simulation, while exploring the whole space of ticks among many simulations.
  - There are some privileged parameter-choices of the actions. For example, a liquidity provider may choose to withdraw any number of their shares from a pool (expressed by `oneOf(1.to(userShares)`). However, the most interesting scenarios happen when the user withdraws all their shares. In a default setup, this would happen too rarely. Thus, we add a Boolean `nondet withdrawAll = oneOf(Set(true, false))` which flips a coin to decide whether to withdraw all shares, or some amount of shares.
  - We also ran some tests that were not completely free ranging. Phrased as runs, they were given a _blueprint_ of the simulation: what sequence of actions needs to happen first, followed by some random choice of actions, and then again followed by predetermined action. 
 
@@ -290,18 +297,16 @@ To assess the quality of the generated traces, we have created predicates descri
 Overall, we ran 100000 simulations, each of the length 50. 
 At every state of the simulation, we inspected the invariants described above.
 We tracked and confirmed that the following properties were true:
- - A tranche was exhausted through cancellation.
- - A tranche was exhausted through a series of withdrawals.
- - A single tranche was shared by multiple users.
- - A single swap needed to used liquidity from both a tranche and a pool.
+ - A tranche was exhausted through cancellation (true in ~50% of all explored states).
+ - A tranche was exhausted through a series of withdrawals (true in ~30% of all explored states).
+ - A single tranche was shared by multiple users (true in ~30% of all explored states).
+ - A single swap needed to used liquidity from both a tranche and a pool (true in ~3% of all explored states).
 
  Descriptively, we saw among the inspected scenarios interactions of swaps with both pools and tranches, as well as multiple users placing their orders, withdrawing proceeds repeatedly and cancelling their placements.
  The type of interaction that caused the recent bug in the DEX having to do with cancellations was found among the generated traces.
 
-## Model Simulation: Intuition on Coverage
-What can we say about how much of the behaviors our simulations are able to cover?
-With the state space defined by 7 actions (6 proper actions and block progress) and a large choice of numerical parameters for ticks, fees, and amounts, the first intuition is that we cannot say much.
-However, we ought to recognize that certain kinds of bugs do not distinugish between all individual setups of numerical bugs. 
+Another modification that enabled us to explore more breadth was projecting the model onto only a part of the available actions.
+This modificatino comes from the insight that certain kinds of bugs do not distinguish between all individual setups of numerical bugs. 
 Rather, what matters are relations between numerical choices.
 
 For instance:
@@ -333,9 +338,13 @@ Preliminary discussions suggest that these violations do not constitute a securi
 We did our analysis by running a suite of simulations, that inspected many interesting behaviors of the system.
 Due to the complexity of the system (and hence the model), we were not able to check the whole model and obtain a guarantee of every possible behavior being inspected.
 
-Another benefit of having the model is that it brings clarity with respect to the expected behavior of the system.
+The simulations run can be compared to the integration tests from the codebase, with two major differences:
+1. We ran the order-of-magnitude of 100000 simulations, with different parameters and action orderings, compared to couple of dozens of integration tests.
+2. The simulations do not test the actual code, that integration tests do.
+
+Another important benefit of this model is that it brings clarity with respect to the expected behavior of the system.
 In the process of developing the model, we have discovered many misleading things in the documentation and specification, which can stem from staleness, typos, or attempting to simplify the explanation for the audience to follow more easily.
-With the formal model, it gets much less likely to introduce a mistake due to its internal consistency checks.
+With the formal model, it gets much less likely to introduce a mistake due to the model's internal consistency checks.
 
 Thus, one direction of future work may be to create a new, dynaminc documentation: it could use executable Quint in the explanations and examples, enabling users to try out their own examples (rather than relying on the provided, constant examples).
 Another exciting direction is using the developed model to write integration tests for the implementation, establishing a firmer connection between the model and the code.
