@@ -15,13 +15,13 @@ As a starting point to building the model, we used the following material:
 
 ### State
 
-  ```bluespec
+```bluespec
 type State = {
     tranches: TrancheKey -> Tranche,
-    tranchesShares: Shares,
+    tranchesShares: TrancheShares,
 
     pools: PoolId -> Pool,
-    poolShares: Addr -> PoolId -> int,
+    poolShares: PoolShares,
 
     // balances of all the users in the system
     coins: Coins,
@@ -31,7 +31,7 @@ type State = {
     // helper state variables, to be used in invariants
     bookkeeping: TrackedValue
 }
-  ```
+```
 
 Fields `tranches` and `tranchesShares` contain the information on the state of the tranches and users' ownership in them. 
 The same for pools is achieved by `pools` and `poolShares`. 
