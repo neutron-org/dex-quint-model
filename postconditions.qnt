@@ -277,8 +277,8 @@ module postconditions {
         })
 
         // There can be up to one off-by-one error per swap
-        // Adding multiplication by 10 to allow for multiple roundings in calculations  per single swap.
-        pure val tolerance = debug("tolerance", swaps.size()*computeUnitTolerance(-tranche.sellTick))
+        // Adding multiplication to allow for multiple roundings in calculations per single swap.
+        pure val tolerance = debug("tolerance", swaps.size() * computeUnitTolerance(-tranche.sellTick))
         pure val expected = debug("expected: ", before.bookkeeping.tranches.proceedsToBeWithdrawn.getOrElse((creator, trancheKey), 0))
         pure val diff = debug("diff", abs(withdrawnAmountTakerToken - expected))
         diff <= tolerance

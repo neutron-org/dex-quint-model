@@ -212,6 +212,7 @@ All transitions are inspected for the state changes as described in the specific
  - The user gets the specified portion of the value they provided, increased by their part of the profits from all the swaps occurring since the last withdrawal.
 
  ## 4. Analysis Results
+
  After developing the model, we have used it to analyze the properties of the system.
  Any violation to the property from the model called for closer inspection.
  Some violations pointed to disrepancies between the model and the input, some to discrepancies between the model&input and the implementation, and some to actual violations of the properties in the implementation. 
@@ -259,7 +260,9 @@ This leads to situations in which it is possible for a tranche to have some fund
 While the kinds of errors are off-by-one in terms of a token, depending on the price of the maker and the taker, they can be large in terms of the value of the pool.
 For an example, see the `violationRuns.qnt::noLossOnTranchesViolationRun` run.
 
-For an equivalent property [NO-LOSS-ON-PLACED-TRANCHE], which tolerates rounding errors multiplied by number of steps,  we found no violation.
+For an equivalent property [NO-LOSS-ON-PLACED-TRANCHE], which tolerates rounding errors multiplied by number of steps, we found no violation.
+
+Moreover, many other properties we checked had violations on their respective versions without tolerance, and we experimented and reasoned about rounding in order to be able to set up tolerances that were enough to make properties hold under different numbers of steps. This was the main struggle of property checking in this project, as many of our long-running experiments would result in violations which, upon debugging, turned out to be yet another rounding problem we haven't thought about. However, the fact that simulation always found violations on the properties that didn't have tolerance is a strong indication that it's coverage is sufficient for these properties.
 
 In the next section, we discuss what kind of confidence we can get about the overall functioning of the system based on these simulation results.
 
@@ -315,22 +318,22 @@ We tracked and confirmed that the following properties were true:
  - A tranche was exhausted through cancellation (true in ~50% of all explored states).
  - A tranche was exhausted through a series of withdrawals (true in ~30% of all explored states).
  - A single tranche was shared by multiple users (true in ~30% of all explored states).
- - A single swap needed to used liquidity from both a tranche and a pool (true in ~3% of all explored states).
+ - A single swap could potentially use liquidity from both a tranche and a pool (true in ~3% of all explored states).
 
  Descriptively, we saw among the inspected scenarios interactions of swaps with both pools and tranches, as well as multiple users placing their orders, withdrawing proceeds repeatedly and cancelling their placements.
  The type of interaction that caused the recent bug in the DEX having to do with cancellations was found among the generated traces.
 
 Another modification that enabled us to explore more breadth was projecting the model onto only a part of the available actions.
-This modificatino comes from the insight that certain kinds of bugs do not distinguish between all individual setups of numerical bugs. 
+This modification comes from the insight that certain kinds of bugs do not distinguish between all individual setups of numerical bugs. 
 Rather, what matters are relations between numerical choices.
 
 For instance:
  - for a swap to succeed, the selling price must be lower than the buying price (and concrete number choices do not matter),
- - for the interaction of a tranche placement, withdrawal, and cancellation, the interactions with different tranches does not matter, only actions relevant to the single tranche,
+ - for the interaction of a tranche placement, withdrawal, and cancellation, the interactions with different tranches does not matter, only actions relevant to the single tranche matters.
  - for the interaction of pool deposits, withdraws, and swaps; again, only a particular pool matters.
 
 Thus, some of the interesting properties may be examined by factoring out only parts of the model.
-In such setup, the simulation may provides good coverage:
+In such setup, the simulation may provide good coverage:
 When checking only for pools' properties, we choose among three actions: `SinglehopSwap`, `Deposit`, `WithdrawPool`, of a fixed pool key. 
 With the previous optimizations, `WithdrawPool` can be seen as two actions, `WithdrawPoolFull` and `WithdrawPoolPartial`, and similarly for the `SinglehopSwap`.
 Our hypothesis is that these 5 actions cover all interesting behaviors with respect to pools.
@@ -338,8 +341,6 @@ An equivalent decomposition holds for tranches' properties.
 
 In such a restricted setup, where all reorderings of actions can be achieved with ~6000 different reorderings (a size of all permuatations of a set of size 6), the simulation offers confidence that we have inspected all interesting (and poteantially problematic) behaviors.
 Our simulations that used the proposed factorization was run 10000 times and found no property violation on top of those reported already.
-
-
 
 ## 5. Conclusion
 
