@@ -329,7 +329,7 @@ We tracked and confirmed that the following properties were true:
  The type of interaction that caused the recent bug in the DEX having to do with cancellations was found among the generated traces.
 
 Another modification that enabled us to explore more breadth was projecting the model onto only a part of the available actions.
-This modification comes from the insight that certain kinds of bugs do not distinguish between all individual setups of numerical bugs.
+This modification comes from the insight that for a certain kinds of bugs the exact numbers do not matter.
 Rather, what matters are relations between numerical choices.
 
 For instance:
@@ -344,7 +344,8 @@ With the previous optimizations, `WithdrawPool` can be seen as two actions, `Wit
 Our hypothesis is that these 5 actions cover all interesting behaviors with respect to pools.
 An equivalent decomposition holds for tranches' properties.
 
-In such a restricted setup, where all reorderings of actions can be achieved with ~6000 different reorderings (a size of all permutations of a set of size 6), the simulation offers confidence that we have inspected all interesting (and potentially problematic) behaviors.
+In such a restricted setup, where all reorderings of actions can be achieved with ~6000 different reorderings (a size of all permutations of a set of size 6), it becomes more likely that the simulation produces an interesting behavior. 
+The complexity of calculations remains, and makes the challenge difficult for model checking.
 Our simulations that used the proposed factorization was run 10000 times and found no property violation on top of those reported already.
 
 ## 5. Conclusion
