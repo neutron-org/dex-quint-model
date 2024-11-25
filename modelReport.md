@@ -314,11 +314,11 @@ To achieve the goal of reducing the state space breadth without sacrificing the 
  - We also ran some tests that were not completely free ranging. Phrased as runs, they were given a _blueprint_ of the simulation: what sequence of actions needs to happen first, followed by some random choice of actions, and then again followed by predetermined action.
 
 With each violation we found, we inspected it, documented if it were a novel one, and modified the model to avoid the paths leading to the violation.
-Once we reached a stable state (violations not being found in our typical 100000 run simulation), we ran a final expiriment: 12 processes, each running 300000 simulations.
+Once we reached a stable state (violations not being found in our typical 100000 run simulation), we ran a final expiriment consisting of 300000 simulations of 50 steps each.
 This run found no novel violation.
 
 To assess the quality of the generated traces, we have created predicates describing interesting scenarios and then monitored the executions to track how often these interesting predicates were true.
- - A tranche was exhausted through cancellation in ~300k traces.
+ - A tranche was exhausted through cancellation in almost all 300k traces.
  - A tranche was exhausted through a series of withdrawals in ~45k traces.
  - A single tranche was shared by multiple users in ~36k traces.
  - A single swap could potentially use liquidity from both a tranche and a pool in ~100k traces.
@@ -359,7 +359,7 @@ We did our analysis by running a suite of simulations, that inspected many inter
 Due to the complexity of the system (and hence the model), we were not able to check the whole model and obtain a guarantee of every possible behavior being inspected.
 
 The simulations run can be compared to the integration tests from the codebase, with two major differences:
-1. We ran the order-of-magnitude of 1000000 simulations, with different parameters and action orderings, compared to a couple of dozens of integration tests.
+1. We ran the order-of-magnitude of 100000 simulations, with different parameters and action orderings, compared to a couple of dozens of integration tests.
 2. The simulations do not test the actual code, that integration tests do.
 
 Another important benefit of this model is that it brings clarity with respect to the expected behavior of the system.
