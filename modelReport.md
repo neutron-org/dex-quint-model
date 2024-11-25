@@ -53,12 +53,12 @@ type Pool = {
     shares: int
 }
 ```
-Each pool contains the information about its reserves (a pair of two integers) and total shares minted (an integer).
+Each pool contains the information about its reserves (a pair of two integers) and total existing shares (an integer).
 
 Check the other types in [types.qnt](./types.qnt).
 
 ### Model Evolution: Initial State
-The initial state is very simple, with nothing in pools or tranches:
+The initial state is very simple, with nothing in pools or tranches, and with some coins amount assigned to each user:
 ```bluespec
 pure val initState: State = {
     tranches: Map(),
@@ -140,12 +140,12 @@ In that regard, all these functions are pure: there is no non-determinism and no
 ### Modeling Choices and Simplifications
 In the model, we made the following simplifying choices:
  1. We did not model a multi-hop swap. Instead, we achieve it by consecutive applications of a single-hop swap.
- 2. We did not add the feature of the user limiting the maximum amount to receive from the placed limit order message.
+ 2. We did not add the feature of the user limiting the maximum amount to receive from the placed limit order message. This is a nice UX feature, but is not security-critical.
  3. In the model, users always specify price ticks instead of direct prices (this choice has to do with technical limitations of Quint, the lack of the `logarithm` function).
 
 ## 3. Properties of Interest
 In this section we describe properties we encoded in the model and checked if they held.
-They can be divided into state properties and transition properties.
+They can be divided into state properties (expressed through predicates on a single state) and transition properties (expressed  through predicates on two subsequent states).
 
 ### State Properties
 
@@ -154,7 +154,7 @@ They can be divided into state properties and transition properties.
  - If there were no swaps through `p`, the user has withdrawn the same value as deposited
  - The user withdrew no less value than deposited.
 
- Note: The value deposited is considered to be value after the (potential) autoswap fee has been paid.
+ Note: In case the autoswap fee needed to be paid, the initial deposited value is considered the one after subtracting the deposit fee.
 
  The Quint encoding of the property can be seen in `baseDexEvolution.qnt::poolProfitInv` and looks like this:
  ```bluespec
@@ -180,47 +180,47 @@ This predicate requires that `forall` deposits, in case the user has withdraws a
 Once the user has withdrawn all their shares, be it through a (sequence of) withdrawal or a cancellation-induced withdrawal, the user is at no loss (with respect to the price set by `sellTick` specified by the user).
 See the predicate at `baseDexEvolution.qnt::noLossOnExhaustedTranches`.
 
-We also checked for a sequence of other transition properties that can be viewed as sanity checks, whose violation would imply that there are potential problems to explore:
+We also checked for a sequence of other properties that can be viewed as sanity checks, whose violation would imply that there are potential problems to explore:
 
-3. If a pool has some positive amount of reserves, it also has a positive amount of shares.
-4. The total amount of coins in the system (tranches, pools, users' coins) is invariant.
-5. All amounts of pool shares and reserves, tranches shares and reserves, and user coins are non-negative.
+3. [RESERVES-IMPLY-SHARES] If a pool has some positive amount of reserves, it also has a positive amount of shares.
+4. [COINS-CONSTANT] The total amount of coins in the system (tranches, pools, users' coins) is invariant.
+5. [NONEGATIVE-AMOUNTS] All amounts of pool shares and reserves, tranches shares and reserves, and user coins are non-negative.
 
 ### Transition Properties
 Transition properties describe the relation between a state `before` and a state `after` a transition happened, and their signature is `(State, Message, State): bool`.
 All transitions are inspected for the state changes as described in the specification. Furthermore, there are specific properties to be expected after transitions.
 
-7. When a user swaps using a `SinglehopSwapMsg` message:
+7. [SWAP-TRANSITION] When a user swaps using a `SinglehopSwapMsg` message:
  - Their limit price is honored.
  - The value of existing pools either increases corresponding to the fee, or remains the same (if the pool did not take part in the swap).
  - The value of all tranches remains the same.
 
-8. When a user swaps using a `PlaceLimitOrderMsg` message:
+8. [LIMIT-ORDER-TRANSITION] When a user swaps using a `PlaceLimitOrderMsg` message:
  - Their limit price is honored.
  - The value of existing pools either increases or remains the same.
  - The value of all tranches remains the same, except for the tranches corresponding to the tick, which may increase in value due to the maker part of the limit order message.
 
-9. When a user deposits to a pool:
+9. [DEPOSIT-TRANSITION] When a user deposits to a pool:
  - The value of existing pools either increases (for the pool to which the user deposits) or remains the same.
  - If the deposit is provided in a different ratio than the existing ratio of the pool, a fee for the swap (to reach the existing ratio) is paid.
  - [POOL-RATIO-CONSTANT] If the autoswap option is set to false, the ratio in the pool does not change when performing (non-initial) deposits.
  - [SHARES-FOR-DEPOSITS] If a user successfully deposits positive amount of coins (at least one in the pair), they will get in return a positive amount of shares.
 
-10. When a user cancels a tranche:
+10. [CANCEL-TRANSITION] When a user cancels a tranche:
  - No shares of other users are affected.
  - The user received the pro-rata shares of any unused maker denom and of all the swap proceeds.
 
-11. When a user withdraws from a tranche:
+11. [TRANCHE-WITHDRAW-TRANSITION] When a user withdraws from a tranche:
  - The user gets the pro-rata portion of all the swap proceeds not yet claimed (since the last withdrawal)
 
-12. When a user withdraws from a pool:
+12. [POOL-WITHDRAW-TRANSITION] When a user withdraws from a pool:
  - The user gets the specified portion of the value they provided, increased by their part of the profits from all the swaps occurring since the last withdrawal.
 
  ## 4. Analysis Results
 
  After developing the model, we have used it to analyze the properties of the system.
  Any violation to the property from the model called for closer inspection.
-   * [ ] Some violations pointed to discrepancies between the model and the input, some to discrepancies between the model&input and the implementation, and some to actual violations of the properties in the implementation.
+ Some violations pointed to discrepancies between the model and the input, some to discrepancies between the model&input and the implementation, and some to actual violations of the properties in the implementation.
 
 
  1. [DEPOSIT-PROFITS]:
@@ -231,7 +231,7 @@ An example run is given in `violationRuns.qnt::noLossViolationRoundingRun`.
 
 In order to disregard rounding errors, we have phrased a similar property that included tolerance for rounding errors:
 
-[NO-LOSS-TOLERANCE] Assuming that we allow for the tolerance proportional to the number of swaps and the value of a pair of unit tokens (to counter off-by-one errors), the user withdraws no less value from the pool than deposited.
+    1.a [NO-LOSS-TOLERANCE] Assuming that we allow for the tolerance proportional to the number of swaps and the value of a pair of unit tokens (to counter off-by-one errors), the user withdraws no less value from the pool than deposited.
 
 However, even this property does not hold.
 The problem occurs when the total value of reserves becomes much larger than the total number of shares. When withdrawing all their shares from the pool, the user receives `userShares * (totalPoolValue / totalPoolShares)`. Assuming an off-by-one error in `userShares`, the max possible error is `0.99 * (totalPoolValue / totalPoolShares)`.
@@ -278,6 +278,9 @@ The first one is by doing bounded model checking---a way to inspect _all possibl
 With Quint, model checking can be done either using a symbolic model checker Apalache, which encodes the whole model as a logical formula and uses a solver to solve it; or using an enumeration-based model checker TLC, which explores all possible states of the model evolution in a breadth-first manner.
 
 Unfortunately, the model of the DEX, which captures different actions and exact computations in them, could not be meaningfully checked either with Apalache or with TLC.
+On top of that exponential growth of the state space, the computation involves exponentiation of rationals.
+All that combined made model checking of this model intractable.
+
 To give the idea of the complexity of the input space.
 - At every step, we choose between 7 actions. For each of them, we also have to non-deterministically choose parameters. In model checking, non-deterministically means that all possibilities are accounted for.
 - If, for every parameter, (ticks, fees, amounts, token, users, etc) we pick from a set of only 2 values (severely constraining the model), it is still too big of a state space.
@@ -285,26 +288,21 @@ To give the idea of the complexity of the input space.
     - (2² + 2⁷ + 2⁷ + 2⁵ + 2 + 2 + 2) = 298
     - This means, for each step in this scenario, we'd have 298 possible transitions to make
 - If we want to model check the model of executions of up to 4 steps, this would have to check 298⁴ = 7886150416 possible states
-  - For a rough estimate of time: We had a simplified version running on TLC, and it was processing ~2269575 states per minute
-  - (7886150416 / 2269575) / 60 ≈ 57.91209379
-  - This would take something on the order of 60 hours to check
-  - Adding one more step: ((298⁵) / 2269575) / 60 ≈ 17257.80395 hours
 
-Our intuition is that
+Our intuition is that restricting the model so much in order to get a barely manageable model-checking is not justified, since
   - the chances a bug can be reproduced only using the 2 possible values we pick for each parameter
   - the chances a bug can be reproduced with 4 steps
-are lower than the chances a bug has of being found by random simulation with more values and 50 steps.
+are fairly low.
 
-On top of that exponential growth of the state space, the computation involves exponentiation of rationals.
-All that combined made model checking of this model intractable.
 
 The second option to inspect the model is by performing many random simulations of the model evolution.
 Simulation is a depth-focused search of the state space, compared to the breadth-first approach of model checking.
 While random simulations do not provide guarantees about covering the whole (bounded) state space, they enable inspecting much longer traces.
 Furthermore, with some small interventions into the model, we can guide the simulator to explore the behaviors of interest.
+Thus, simulation was our method of choice for checking the model of the Dex.
 
-With large state spaces, it is more productive to explore larger depths (thus: more interactions) than insist on covering the whole breadth (thus, sacrificing some number of choices).
-Still, in order to hit the most interesting scenarios, it makes sense to reduce the breadth as much as possible.
+While it is more productive to explore larger depths (thus: more interactions) than insist on covering the whole breadth (thus, sacrificing some number of choices), it 
+still makes sense to reduce the breadth as much as possible to hit the most interesting scenarios.
 
 ## Model Simulation: Shrinking the State Space
 
@@ -315,15 +313,15 @@ To achieve the goal of reducing the state space breadth without sacrificing the 
  - There are some privileged parameter-choices of the actions. For example, a liquidity provider may choose to withdraw any number of their shares from a pool (expressed by `oneOf(1.to(userShares)`). However, the most interesting scenarios happen when the user withdraws all their shares. In a default setup, this would happen too rarely. Thus, we add a Boolean `nondet withdrawAll = oneOf(Set(true, false))` which flips a coin to decide whether to withdraw all shares, or some amount of shares.
  - We also ran some tests that were not completely free ranging. Phrased as runs, they were given a _blueprint_ of the simulation: what sequence of actions needs to happen first, followed by some random choice of actions, and then again followed by predetermined action.
 
-To assess the quality of the generated traces, we have created predicates describing interesting scenarios and then monitored the executions to track how often these interesting predicates were true.
+With each violation we found, we inspected it, documented if it were a novel one, and modified the model to avoid the paths leading to the violation.
+Once we reached a stable state (violations not being found in our typical 100000 run simulation), we ran a final expiriment: 12 processes, each running 300000 simulations.
+This run found no novel violation.
 
-Overall, we ran 100000 simulations, each of the length 50.
-At every state of the simulation, we inspected the invariants described above.
-We tracked and confirmed that the following properties were true:
- - A tranche was exhausted through cancellation (true in ~60% of all explored states).
- - A tranche was exhausted through a series of withdrawals (true in ~7% of all explored states).
- - A single tranche was shared by multiple users (true in ~10% of all explored states).
- - A single swap could potentially use liquidity from both a tranche and a pool (true in ~3% of all explored states).
+To assess the quality of the generated traces, we have created predicates describing interesting scenarios and then monitored the executions to track how often these interesting predicates were true.
+ - A tranche was exhausted through cancellation in ~300k traces.
+ - A tranche was exhausted through a series of withdrawals in ~45k traces.
+ - A single tranche was shared by multiple users in ~36k traces.
+ - A single swap could potentially use liquidity from both a tranche and a pool in ~100k traces.
 
  Descriptively, we saw among the inspected scenarios interactions of swaps with both pools and tranches, as well as multiple users placing their orders, withdrawing proceeds repeatedly and cancelling their placements.
  The type of interaction that caused the recent bug in the DEX having to do with cancellations was found among the generated traces.
@@ -344,9 +342,9 @@ With the previous optimizations, `WithdrawPool` can be seen as two actions, `Wit
 Our hypothesis is that these 5 actions cover all interesting behaviors with respect to pools.
 An equivalent decomposition holds for tranches' properties.
 
-In such a restricted setup, where all reorderings of actions can be achieved with ~6000 different reorderings (a size of all permutations of a set of size 6), it becomes more likely that the simulation produces an interesting behavior. 
-The complexity of calculations remains, and makes the challenge difficult for model checking.
-Our simulations that used the proposed factorization was run 10000 times and found no property violation on top of those reported already.
+In such a restricted setup, where all reorderings of actions can be achieved with ~6000 different choices of actions (a size of all permutations of a set of size 6), it becomes more likely that the simulation produces an interesting behavior. 
+The complexity of parameter choice and calculations remains, and makes the challenge difficult for model checking.
+Running simulations in such a factorized model did not find novel violations.
 
 ## 5. Conclusion
 
@@ -361,7 +359,7 @@ We did our analysis by running a suite of simulations, that inspected many inter
 Due to the complexity of the system (and hence the model), we were not able to check the whole model and obtain a guarantee of every possible behavior being inspected.
 
 The simulations run can be compared to the integration tests from the codebase, with two major differences:
-1. We ran the order-of-magnitude of 100000 simulations, with different parameters and action orderings, compared to a couple of dozens of integration tests.
+1. We ran the order-of-magnitude of 1000000 simulations, with different parameters and action orderings, compared to a couple of dozens of integration tests.
 2. The simulations do not test the actual code, that integration tests do.
 
 Another important benefit of this model is that it brings clarity with respect to the expected behavior of the system.
