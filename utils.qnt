@@ -236,11 +236,12 @@ module utils {
                 remainingAmountToExchange: amount,
                 remainingTranches: relevantTranches,
                 remainingPools: relevantPools,
-                outAmount: 0
+                outAmount: 0,
+                orderFilled: false
             },
             (acc, _) =>
                 // Iterate only if there is still amount to exchange
-                if (acc.remainingAmountToExchange == 0) acc else
+                if (acc.remainingAmountToExchange == 0) { ...acc, orderFilled: true } else
 
                 // find me the minumum tranche key and the minimum pool key
                 val minTrancheKey: TrancheKey = getMinimumTrancheKey(acc.remainingTranches)
@@ -249,51 +250,58 @@ module utils {
                 // the pool price includes the fee
                 val minPoolReserveTick = computeReserveTick(minPoolKey.tick, askingForToken0Liquidity, minPoolKey.fee)
 
-                // use the tranche key only if there are no more pools or there are pools, but
-                // their best price is strictly larger than that of the tranches
-                if (acc.remainingPools == Set() or minTrancheKey.sellTick < minPoolReserveTick)
-                    // I want to know how much I can exchange in this tranche
-                    val tranche = tranches.get(minTrancheKey)
-                    val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
-                    // update the acc value
-                    {
-                        ...acc,
-                        tranchesUpdates: acc.tranchesUpdates.put(
-                            minTrancheKey,
-                            { makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount }
-                        ),
-                        remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
-                        remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
-                        outAmount: acc.outAmount + exchangeInfo.exchangedMakerAmount,
-                    }
+                val minTick = min(minTrancheKey.sellTick, minPoolReserveTick)
+                val currentLiquidityMakerPrice = priceFromTick(minTick)
 
-                // otherwise, I am using the pool
+                // if the remaining amount to exchange will net less than 1 maker token at the current price, then stop iterating
+                if  (acc.remainingAmountToExchange / currentLiquidityMakerPrice < 1) 
+                    { ...acc, orderFilled: true }
                 else
-                    val pool = pools.get(minPoolKey)
-                    // tokenB is the one that the user will be getting
-                    val reservesTokenOut = debug("reservesTokenOut: ",if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2)
-                    val priceTokenOut = priceFromTick(minPoolReserveTick)
+                    // use the tranche key only if there are no more pools or there are pools, but
+                    // their best price is strictly larger than that of the tranches
+                    if (acc.remainingPools == Set() or minTrancheKey.sellTick < minPoolReserveTick)
+                        // I want to know how much I can exchange in this tranche
+                        val tranche = tranches.get(minTrancheKey)
+                        val exchangeInfo = calculateTrancheExchangableAmount(acc.remainingAmountToExchange, tranche)
+                        // update the acc value
+                        {
+                            ...acc,
+                            tranchesUpdates: acc.tranchesUpdates.put(
+                                minTrancheKey,
+                                { makerReservesDiff: -exchangeInfo.exchangedMakerAmount, takerReservesDiff: exchangeInfo.exchangedTakerAmount }
+                            ),
+                            remainingAmountToExchange: acc.remainingAmountToExchange - exchangeInfo.exchangedTakerAmount,
+                            remainingTranches: acc.remainingTranches.setRemove(minTrancheKey),
+                            outAmount: acc.outAmount + exchangeInfo.exchangedMakerAmount,
+                        }
 
-                    val wantFromPool = debug("want from pool", intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate())
-                    val userGetsFromPool = min(wantFromPool, reservesTokenOut)
-                    val userPutsIntoPool = debug("puts into pool",
-                        mulInt(priceTokenOut, userGetsFromPool).ceil()
-                    )
+                    // otherwise, I am using the pool
+                    else
+                        val pool = pools.get(minPoolKey)
+                        // tokenB is the one that the user will be getting
+                        val reservesTokenOut = debug("reservesTokenOut: ",if (askingForToken0Liquidity) pool.reserves._1 else pool.reserves._2)
+                        val priceTokenOut = priceFromTick(minPoolReserveTick)
 
-                    {
-                        ...acc,
-                        remainingPools: acc.remainingPools.setRemove(minPoolKey),
-                        remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
-                        outAmount: acc.outAmount + userGetsFromPool,
-                        poolUpdates: acc.poolUpdates.put(
-                            minPoolKey,
-                            if (isPairNormalized)
-                              { token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool }
-                            else
-                              { token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool }
-                        ),
-                        outAmount: acc.outAmount + userGetsFromPool,
-                    }
+                        val wantFromPool = debug("want from pool", intDivDec(acc.remainingAmountToExchange, priceTokenOut).truncate())
+                        val userGetsFromPool = min(wantFromPool, reservesTokenOut)
+                        val userPutsIntoPool = debug("puts into pool",
+                            mulInt(priceTokenOut, userGetsFromPool).ceil()
+                        )
+
+                        {
+                            ...acc,
+                            remainingPools: acc.remainingPools.setRemove(minPoolKey),
+                            remainingAmountToExchange: acc.remainingAmountToExchange - userPutsIntoPool,
+                            outAmount: acc.outAmount + userGetsFromPool,
+                            poolUpdates: acc.poolUpdates.put(
+                                minPoolKey,
+                                if (isPairNormalized)
+                                { token0Diff: userPutsIntoPool, token1Diff: -userGetsFromPool }
+                                else
+                                { token0Diff: -userGetsFromPool, token1Diff: userPutsIntoPool }
+                            ),
+                            outAmount: acc.outAmount + userGetsFromPool,
+                        }
         )
 
         {
@@ -633,4 +641,77 @@ module utils {
             val depositRatio = if (amounts._2 > 0) fromRatio(amounts._1, amounts._2) else fromInt(MAX_AMOUNT)
             div(reservesRatio, depositRatio).gt(fromRatio(1, 2)) and fromInt(2).gt(div(reservesRatio, depositRatio))
 
-}
+    pure def swapOnDeposit(
+        tranches: TrancheKey -> Tranche,
+        pools: PoolId -> Pool,
+        tokenPair: (Token, Token),
+        tickIndex: int,
+        fee: int,
+        amount0: int,
+        amount1: int
+    ): {inAmount0: int, inAmount1: int, depositAmount0: int, depositAmount1: int} =
+        val depositTickToken0 = -tickIndex + fee
+        
+        // TODO: this is unnecarily computationally intensive. But it does allow us to ensure that both sides can 
+        // never be behind enemy lines. 
+        val swapResult0To1 =  swap(
+                (tokenPair._1, tokenPair._2),
+                tranches,
+                pools,
+                amount0,
+                -depositTickToken0,
+                0
+            )
+        val swapResult1To0 =  swap(
+                (tokenPair._2, tokenPair._1),
+                tranches,
+                pools,
+                amount1,
+                depositTickToken0,
+                0
+        )
+
+        if (swapResult0To1.outAmount > 0 and swapResult1To0.outAmount > 0)
+            fail("both sides BEL")
+        else 
+            if (swapResult0To1.outAmount > 0)
+                // Swap token0 for token1 if token0 is Behind Enemy Lines
+                if (swapResult0To1.orderFilled )
+                    {
+                        inAmount0: amount0 - swapResult0To1.remainingAmount,
+                        inAmount1: amount1, 
+                        depositAmount0: 0,
+                        depositAmount1: amount1 + swapResult0To1.outAmount
+                    }
+                else
+                    {
+                        inAmount0: amount0,
+                        inAmount1: amount1, 
+                        depositAmount0: swapResult0To1.remainingAmount,
+                        depositAmount1: amount1 + swapResult0To1.outAmount
+                    }
+            else if (swapResult1To0.outAmount > 0)
+                // Swap token1 for token0 if token1 is Behind Enemy Lines
+                if (swapResult1To0.orderFilled )
+                    {
+                        inAmount0: amount0,
+                        inAmount1: amount1 - swapResult1To0.remainingAmount, 
+                        depositAmount0: amount0 + swapResult1To0.outAmount,
+                        depositAmount1: 0
+                    }
+                else
+                    {
+                        inAmount0: amount0,
+                        inAmount1: amount1, 
+                        depositAmount0: amount0 + swapResult1To0.outAmount,
+                        depositAmount1: swapResult1To0.remainingAmount
+                    }
+            else 
+            {
+                inAmount0: amount0,
+                inAmount1: amount1, 
+                depositAmount0: amount0,
+                depositAmount1: amount1
+            }
+} // End of module
+    

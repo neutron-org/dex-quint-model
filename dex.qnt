@@ -42,25 +42,40 @@ module Dex {
     pure def deposit(state: State, msg: DepositMsg): Result = {
         // first, sorting
         val pair = orderTokenPair(msg.tokenPair)
-        val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
         val token0SellTick = if (pair == msg.tokenPair) msg.token0SellTick else -msg.token0SellTick
+        val amounts = if (pair == msg.tokenPair) msg.amountPair else (msg.amountPair._2, msg.amountPair._1)
+        
+        val depositValues = if( msg.swapOnDeposit) 
+            swapOnDeposit(state.tranches, state.pools, pair, token0SellTick, msg.fee, amounts._1, amounts._2) 
+            else       
+                {
+                    inAmount0: amounts._1,
+                    inAmount1: amounts._2,  
+                    depositAmount0: amounts._1,
+                    depositAmount1: amounts._2,
+                }
+
+
+        val inAmounts = (depositValues.inAmount0, depositValues.inAmount1)
+        val depositAmounts = (depositValues.depositAmount0, depositValues.depositAmount1)
 
         // @audit-info Consider not checking this, but disallowing any executions that do not satisfy the property
-        if (isPoolBehindEnemyLines(state, pair, token0SellTick, msg.fee, amounts)) { state: state, error: "Pool behind enemy lines" } else
+        if (isPoolBehindEnemyLines(state, pair, token0SellTick, msg.fee, depositAmounts)) { state: state, error: "Pool behind enemy lines" } else
 
         val poolId = { tokenPair: pair, tick: token0SellTick, fee: msg.fee }
         val pool = state.pools.getOrElse(poolId, emptyPool)
 
         // This is to disallow a known property violation, as otherwise that one gets found all the time
-        if (pool != emptyPool and not(isRatioReasonable(pool.reserves, amounts))) { state: state, error: "Ratio condition not satisfied" } else
+        if (pool != emptyPool and not(isRatioReasonable(pool.reserves, depositAmounts))) { state: state, error: "Ratio condition not satisfied" } else
 
-        val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, amounts)
+        val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, depositAmounts)
         // the amounts that need to be swapped
-        val residualAmounts = calcAutoswapAmount(amounts, pool.reserves, token0SellTick)
+        val residualAmounts = calcAutoswapAmount(depositAmounts, pool.reserves, token0SellTick)
         val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
-        val inAmounts = if (performAutoswap) amounts else inAmountsBeforeAutoswap
+        val postAutoswapInAmounts = if (performAutoswap) inAmounts else inAmountsBeforeAutoswap
+        val postAutoswapDepositAmounts = if (performAutoswap) depositAmounts else inAmountsBeforeAutoswap
         val autoswapFeeValue = if (performAutoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
-        val outShares = computeSharesDeposit(pool.shares, pool.reserves, inAmounts, token0SellTick, autoswapFeeValue)
+        val outShares = computeSharesDeposit(pool.shares, pool.reserves, postAutoswapInAmounts, token0SellTick, autoswapFeeValue)
 
         if (outShares == 0) { state: state, error: "No shares created" } else
 
@@ -69,14 +84,14 @@ module Dex {
         val updatedPools = state.pools.put(
             poolId,
             {
-                reserves: (pool.reserves._1 + inAmounts._1, pool.reserves._2 + inAmounts._2),
+                reserves: (pool.reserves._1 + postAutoswapDepositAmounts._1, pool.reserves._2 + postAutoswapDepositAmounts._2),
                 shares: pool.shares + outShares
-            }
+            } 
         )
 
         val updatedCoins = state.coins
-            .setBy((msg.creator, pair._1), old => old - inAmounts._1)
-            .setBy((msg.creator, pair._2), old => old - inAmounts._2)
+            .setBy((msg.creator, pair._1), old => old - postAutoswapInAmounts._1)
+            .setBy((msg.creator, pair._2), old => old - postAutoswapInAmounts._2)
 
         ok({
             ...state,
