@@ -254,8 +254,9 @@ module utils {
                 val currentLiquidityMakerPrice = priceFromTick(minTick)
 
                 // if the remaining amount to exchange will net less than 1 maker token at the current price, then stop iterating
-                if  (acc.remainingAmountToExchange / currentLiquidityMakerPrice < 1) 
-                    { ...acc, orderFilled: true }
+                val amountOutAtNextLiq = intDivDec(acc.remainingAmountToExchange, currentLiquidityMakerPrice).truncate()
+                if (amountOutAtNextLiq < 1) 
+                   {...acc, orderFilled: true}
                 else
                     // use the tranche key only if there are no more pools or there are pools, but
                     // their best price is strictly larger than that of the tranches
@@ -308,7 +309,8 @@ module utils {
           remainingAmount: foldResult.remainingAmountToExchange,
           outAmount: foldResult.outAmount,
           poolUpdates: foldResult.poolUpdates,
-          tranchesUpdates: foldResult.tranchesUpdates
+          tranchesUpdates: foldResult.tranchesUpdates,
+          orderFilled: foldResult.orderFilled
         }
 
     pure def mayExpire(tranche: Tranche): bool =
@@ -649,7 +651,7 @@ module utils {
         fee: int,
         amount0: int,
         amount1: int
-    ): {inAmount0: int, inAmount1: int, depositAmount0: int, depositAmount1: int} =
+    ): {inAmount0: int, inAmount1: int, depositAmount0: int, depositAmount1: int, error: str} =
         val depositTickToken0 = -tickIndex + fee
         
         // TODO: this is unnecarily computationally intensive. But it does allow us to ensure that both sides can 
@@ -672,8 +674,14 @@ module utils {
         )
 
         if (swapResult0To1.outAmount > 0 and swapResult1To0.outAmount > 0)
-            fail("both sides BEL")
-        else 
+            {
+                inAmount0: 0,
+                inAmount1: 0,
+                depositAmount0: 0,
+                depositAmount1: 0,
+                error: "both sides BEL"
+            }
+        else
             if (swapResult0To1.outAmount > 0)
                 // Swap token0 for token1 if token0 is Behind Enemy Lines
                 if (swapResult0To1.orderFilled )
@@ -681,14 +689,16 @@ module utils {
                         inAmount0: amount0 - swapResult0To1.remainingAmount,
                         inAmount1: amount1, 
                         depositAmount0: 0,
-                        depositAmount1: amount1 + swapResult0To1.outAmount
+                        depositAmount1: amount1 + swapResult0To1.outAmount,
+                        error: "nil"
                     }
                 else
                     {
                         inAmount0: amount0,
                         inAmount1: amount1, 
                         depositAmount0: swapResult0To1.remainingAmount,
-                        depositAmount1: amount1 + swapResult0To1.outAmount
+                        depositAmount1: amount1 + swapResult0To1.outAmount,
+                        error: "nil"
                     }
             else if (swapResult1To0.outAmount > 0)
                 // Swap token1 for token0 if token1 is Behind Enemy Lines
@@ -697,21 +707,24 @@ module utils {
                         inAmount0: amount0,
                         inAmount1: amount1 - swapResult1To0.remainingAmount, 
                         depositAmount0: amount0 + swapResult1To0.outAmount,
-                        depositAmount1: 0
+                        depositAmount1: 0,
+                        error: "nil"
                     }
                 else
                     {
                         inAmount0: amount0,
                         inAmount1: amount1, 
                         depositAmount0: amount0 + swapResult1To0.outAmount,
-                        depositAmount1: swapResult1To0.remainingAmount
+                        depositAmount1: swapResult1To0.remainingAmount,
+                        error: "nil"
                     }
             else 
             {
                 inAmount0: amount0,
                 inAmount1: amount1, 
                 depositAmount0: amount0,
-                depositAmount1: amount1
+                depositAmount1: amount1,
+                error: "nil"
             }
 } // End of module
     

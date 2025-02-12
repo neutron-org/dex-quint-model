@@ -13,13 +13,14 @@ module runsUtils {
     pure val DEFAULT_CREATOR: Addr = "Alice"
     pure val DEFAULT_TOKEN_PAIR: TokenPair = ("A", "B")
 
-    pure def depositMsgPool(creator: Addr, poolKey: PoolId, amountPair: (int, int), doAutoswap: bool): DepositMsg = {
+    pure def depositMsgPool(creator: Addr, poolKey: PoolId, amountPair: (int, int), doAutoswap: bool, doSwapOnDeposit: bool): DepositMsg = {
         creator: creator,
         tokenPair: poolKey.tokenPair,
         amountPair: amountPair,
         token0SellTick: poolKey.tick,
         fee: poolKey.fee,
-        autoswap: doAutoswap
+        autoswap: doAutoswap,
+        swapOnDeposit: doSwapOnDeposit
     }
 
     pure def placeLimitMsg(creator: Addr, maker: Token, taker: Token, tick: TickIndex, amount: int): PlaceLimitOrderMsg = {

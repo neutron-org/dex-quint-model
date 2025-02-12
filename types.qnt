@@ -40,7 +40,7 @@ module types {
         amountPair: (int, int),
         token0SellTick: TickIndex,
         fee: TickIndex,
-        autoswap: bool
+        autoswap: bool,
         swapOnDeposit: bool,
     }
 

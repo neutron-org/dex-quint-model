@@ -53,8 +53,9 @@ module Dex {
                     inAmount1: amounts._2,  
                     depositAmount0: amounts._1,
                     depositAmount1: amounts._2,
+                    error: "nil"
                 }
-
+        if (depositValues.error != "nil") { state: state, error: depositValues.error } else
 
         val inAmounts = (depositValues.inAmount0, depositValues.inAmount1)
         val depositAmounts = (depositValues.depositAmount0, depositValues.depositAmount1)
@@ -75,7 +76,7 @@ module Dex {
         val postAutoswapInAmounts = if (performAutoswap) inAmounts else inAmountsBeforeAutoswap
         val postAutoswapDepositAmounts = if (performAutoswap) depositAmounts else inAmountsBeforeAutoswap
         val autoswapFeeValue = if (performAutoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
-        val outShares = computeSharesDeposit(pool.shares, pool.reserves, postAutoswapInAmounts, token0SellTick, autoswapFeeValue)
+        val outShares = computeSharesDeposit(pool.shares, pool.reserves, postAutoswapDepositAmounts, token0SellTick, autoswapFeeValue)
 
         if (outShares == 0) { state: state, error: "No shares created" } else
 
@@ -86,7 +87,7 @@ module Dex {
             {
                 reserves: (pool.reserves._1 + postAutoswapDepositAmounts._1, pool.reserves._2 + postAutoswapDepositAmounts._2),
                 shares: pool.shares + outShares
-            } 
+            }
         )
 
         val updatedCoins = state.coins

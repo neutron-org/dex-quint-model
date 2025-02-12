@@ -14,7 +14,7 @@ module violationRuns {
         val poolKey = { fee: 20000, tick: -100, tokenPair: ("A", "B") }
         init
         .then(
-            val msg = depositMsgPool("Bob", poolKey, (11,0), true)
+            val msg = depositMsgPool("Bob", poolKey, (11,0), true, false)
             val res = deposit(state, msg)
             all {
                 state' = res.state,
@@ -24,7 +24,7 @@ module violationRuns {
             }
         )
         .then(
-            val msg = depositMsgPool("Alice", poolKey, (0, 2215), true)
+            val msg = depositMsgPool("Alice", poolKey, (0, 2215), true, false)
             val res = deposit(state, msg)
             all {
                 state' = res.state,
@@ -56,7 +56,7 @@ module violationRuns {
     run noLossViolationRoundingRun =
         val key = { fee: 6, tick: -9, tokenPair: ("B", "C") }
         init.then(
-            val msg = depositMsgPool("Bob", key, (211,337), true)
+            val msg = depositMsgPool("Bob", key, (211,337), true, false)
             val res = deposit(state, msg)
             all {
                 state' = res.state,
@@ -73,7 +73,7 @@ module violationRuns {
                 assert(coinsGained(state, res.state, "Bob", "C") == 50)
             })
         .then(
-            val msg = depositMsgPool("Carol", key, (927, 11), false)
+            val msg = depositMsgPool("Carol", key, (927, 11), false, false)
             val res = deposit(state, msg)
             all {
                 state' = res.state,
@@ -216,7 +216,7 @@ module violationRuns {
         val creator = DEFAULT_CREATOR
         init
         .then(
-            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (1, 73), false)
+            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (1, 73), false, false)
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all {
@@ -225,7 +225,7 @@ module violationRuns {
             }
         )
         .then(
-            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (21, 145), false)
+            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (21, 145), false, false)
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all {
@@ -233,7 +233,7 @@ module violationRuns {
                 assert(updatedPool.reservesRatio() == (2, 218))
             })
         .then(
-            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (21, 217), false)
+            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (21, 217), false, false)
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all {
@@ -241,7 +241,7 @@ module violationRuns {
                 assert(updatedPool.reservesRatio() == (3, 435))
             })
         .then(
-            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (21, 289), false)
+            val depositMsg: DepositMsg = depositMsgPool(creator, testPoolKey, (21, 289), false, false)
             val res = deposit(state, depositMsg)
             val updatedPool = res.state.pools.get(testPoolKey)
             all {
