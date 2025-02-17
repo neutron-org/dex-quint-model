@@ -229,6 +229,8 @@ The reason for why this property was violated has to do with rounding when withd
 Repeated rounding may make it happen so that the loss grows.
 An example run is given in `violationRuns.qnt::noLossViolationRoundingRun`.
 
+Note that here we are talking about differences in dozens of micro-tokens. 
+Thus, this violation is considered acceptable by the dev team.
 In order to disregard rounding errors, we have phrased a similar property that included tolerance for rounding errors:
 
     1.a [NO-LOSS-TOLERANCE] Assuming that we allow for the tolerance proportional to the number of swaps and the value of a pair of unit tokens (to counter off-by-one errors), the user withdraws no less value from the pool than deposited.
@@ -254,7 +256,9 @@ A potential attack is a user front-running any extremely large deposit (bigger t
 Alternatively, and much more lucrative, is a user front-running any initial deposit to a new pool.
 
 NOTE: This particular violation seems to be stemming from the assumption that every pool's value will be significantly larger than the deposit value.
-Indeed, the calculation for the autoswap fee starts with the goal of bringing deposit amounts to match the ration of the pool, where sometimes it would be easier to do it the other way round.
+Indeed, the calculation for the autoswap fee starts with the goal of bringing deposit amounts to match the ratio of the pool, where sometimes it would be easier to do it the other way round.
+
+Discussing this issue with the dev team, they informed us they were aware of the issue and were planning to address it by runtime monitoring, especially in the initial phase of pool creation.
 
 2. [POOL-RATIO-CONSTANT] Repeated rounding can change the ratio of the pool significantly (even without autoswap disabled).
 In the `violationRuns.qnt::autoswapIssueRun`, we give an example in which the ratio starts at 0.0136 and is then changed into 0.0055 within 4 steps.
@@ -267,7 +271,9 @@ For an example, see the `violationRuns.qnt::noLossOnTranchesViolationRun` run.
 
 For an equivalent property [NO-LOSS-ON-PLACED-TRANCHE], which tolerates rounding errors multiplied by number of steps, we found no violation.
 
-Moreover, many other properties we checked had violations on their respective versions without tolerance, and we experimented and reasoned about rounding in order to be able to set up tolerances that were enough to make properties hold under different numbers of steps. This was the main struggle of property checking in this project, as many of our long-running experiments would result in violations which, upon debugging, turned out to be yet another rounding problem we haven't thought about. However, the fact that simulation always found violations on the properties that didn't have tolerance is a strong indication that it's coverage is sufficient for these properties.
+Moreover, many other properties we checked had violations on their respective versions without tolerance, and we experimented and reasoned about rounding in order to be able to set up tolerances that were enough to make properties hold under different numbers of steps. 
+This was the main struggle of property checking in this project, as many of our long-running experiments would result in violations which, upon debugging, turned out to be yet another not-accounted-for rounding problem. 
+However, the fact that simulation always found violations on the properties that didn't have tolerance is a strong indication that it's coverage is sufficient for these properties.
 
 In the next section, we discuss what kind of confidence we can get about the overall functioning of the system based on these simulation results.
 
@@ -285,9 +291,10 @@ To give the idea of the complexity of the input space.
 - At every step, we choose between 7 actions. For each of them, we also have to non-deterministically choose parameters. In model checking, non-deterministically means that all possibilities are accounted for.
 - If, for every parameter, (ticks, fees, amounts, token, users, etc) we pick from a set of only 2 values (severely constraining the model), it is still too big of a state space.
   - Considering how many parameters we have for each action of the 7 actions (some of them have more parameters than others):
-    - (2² + 2⁷ + 2⁷ + 2⁵ + 2 + 2 + 2) = 298
+    <!-- - (2² + 2⁷ + 2⁷ + 2⁵ + 2 + 2 + 2) = 298 -->
+    - 2^2 + 2^7 + 2^7 + 2^4 + 2 + 2 + 2 = 298
     - This means, for each step in this scenario, we'd have 298 possible transitions to make
-- If we want to model check the model of executions of up to 4 steps, this would have to check 298⁴ = 7886150416 possible states
+- If we want to model check the model of executions of up to 4 steps, this would have to check 298^4 = 7886150416 possible states
 
 Our intuition is that restricting the model so much in order to get a barely manageable model-checking is not justified, since
   - the chances a bug can be reproduced only using the 2 possible values we pick for each parameter
@@ -314,7 +321,7 @@ To achieve the goal of reducing the state space breadth without sacrificing the 
  - We also ran some tests that were not completely free ranging. Phrased as runs, they were given a _blueprint_ of the simulation: what sequence of actions needs to happen first, followed by some random choice of actions, and then again followed by predetermined action.
 
 With each violation we found, we inspected it, documented if it were a novel one, and modified the model to avoid the paths leading to the violation.
-Once we reached a stable state (violations not being found in our typical 100000 run simulation), we ran a final expiriment consisting of 300000 simulations of 50 steps each.
+Once we reached a stable state (violations not being found in our typical 100000 run simulation), we ran a final experiment consisting of 300000 simulations of 50 steps each.
 This run found no novel violation.
 
 To assess the quality of the generated traces, we have created predicates describing interesting scenarios and then monitored the executions to track how often these interesting predicates were true.
