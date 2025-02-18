@@ -235,7 +235,7 @@ module runs {
                 }
             }
         )
-        // // Run again Alice's order to completely fill Bob's order and create a new tranche
+        // Run again Alice's order to completely fill Bob's order and create a new tranche
         .then(
             val alicesOrder: PlaceLimitOrderMsg = {
                 creator: "Alice",
