@@ -653,6 +653,7 @@ module utils {
         amount1: int
     ): {inAmount0: int, inAmount1: int, depositAmount0: int, depositAmount1: int, error: str} =
         val depositTickToken0 = -tickIndex + fee
+        val depositTickToken1 = tickIndex + fee
         
         // TODO: this is unnecarily computationally intensive. But it does allow us to ensure that both sides can 
         // never be behind enemy lines. 
@@ -669,7 +670,7 @@ module utils {
                 tranches,
                 pools,
                 amount1,
-                depositTickToken0,
+                depositTickToken1,
                 0
         )
 
