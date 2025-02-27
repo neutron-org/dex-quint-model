@@ -53,18 +53,27 @@ module Dex {
                     inAmount1: amounts._2,  
                     depositAmount0: amounts._1,
                     depositAmount1: amounts._2,
+                    swapUpdate: {remainingAmount: 0, outAmount: 0, orderFilled: false, tranchesUpdates: Map(), poolUpdates: Map() },
                     error: "nil"
                 }
-        if (depositValues.error != "nil") { state: state, error: depositValues.error } else
+        if (depositValues.error != "nil") { state: {state}, error: depositValues.error } else
+
+                    
+        val updatedPools = updatePools(state.pools, depositValues.swapUpdate.poolUpdates)
+
+        // 2) update the tranches states
+        val updatedTranches: TrancheKey->Tranche = updateTranches(state.tranches, depositValues.swapUpdate.tranchesUpdates)
+
+        val newState = {...state, pools: updatedPools, tranches:updatedTranches}
 
         val inAmounts = (depositValues.inAmount0, depositValues.inAmount1)
         val depositAmounts = (depositValues.depositAmount0, depositValues.depositAmount1)
 
         // @audit-info Consider not checking this, but disallowing any executions that do not satisfy the property
-        if (isPoolBehindEnemyLines(state, pair, token0SellTick, msg.fee, depositAmounts)) { state: state, error: "Pool behind enemy lines" } else
+        if (isPoolBehindEnemyLines(newState, pair, token0SellTick, msg.fee, depositAmounts)) { state: state, error: "Pool behind enemy lines" } else
 
         val poolId = { tokenPair: pair, tick: token0SellTick, fee: msg.fee }
-        val pool = state.pools.getOrElse(poolId, emptyPool)
+        val pool = newState.pools.getOrElse(poolId, emptyPool)
 
         // This is to disallow a known property violation, as otherwise that one gets found all the time
         if (pool != emptyPool and not(isRatioReasonable(pool.reserves, depositAmounts))) { state: state, error: "Ratio condition not satisfied" } else
@@ -80,9 +89,9 @@ module Dex {
 
         if (outShares == 0) { state: state, error: "No shares created" } else
 
-        val updatedShares = state.poolShares.setByWithDefault((msg.creator, poolId),  old => old + outShares, 0)
+        val updatedShares = newState.poolShares.setByWithDefault((msg.creator, poolId),  old => old + outShares, 0)
 
-        val updatedPools = state.pools.put(
+        val updatedPools = newState.pools.put(
             poolId,
             {
                 reserves: (pool.reserves._1 + postAutoswapDepositAmounts._1, pool.reserves._2 + postAutoswapDepositAmounts._2),
@@ -90,12 +99,12 @@ module Dex {
             }
         )
 
-        val updatedCoins = state.coins
+        val updatedCoins = newState.coins
             .setBy((msg.creator, pair._1), old => old - postAutoswapInAmounts._1)
             .setBy((msg.creator, pair._2), old => old - postAutoswapInAmounts._2)
 
         ok({
-            ...state,
+            ...newState,
             poolShares: updatedShares,
             pools: updatedPools,
             coins: updatedCoins,

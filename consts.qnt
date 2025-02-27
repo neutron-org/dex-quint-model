@@ -4,7 +4,7 @@ module consts {
     import types.* from "types"
     import dec.* from "lib/dec"
 
-    pure val DEBUG_ENABLED = false
+    pure val DEBUG_ENABLED = true
 
     // This value is taken from neutron/x/dex/types/price.go#L20-L20
     // This is not used for non-deterministic samples. See `TICKS` instead.

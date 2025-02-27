@@ -651,7 +651,7 @@ module utils {
         fee: int,
         amount0: int,
         amount1: int
-    ): {inAmount0: int, inAmount1: int, depositAmount0: int, depositAmount1: int, error: str} =
+    ): {inAmount0: int, inAmount1: int, depositAmount0: int, depositAmount1: int, swapUpdate: SwapUpdateInfo, error: str} =
         val depositTickToken0 = -tickIndex + fee
         val depositTickToken1 = tickIndex + fee
         
@@ -662,7 +662,7 @@ module utils {
                 tranches,
                 pools,
                 amount0,
-                -depositTickToken0,
+                depositTickToken0,
                 0
             )
         val swapResult1To0 =  swap(
@@ -680,6 +680,7 @@ module utils {
                 inAmount1: 0,
                 depositAmount0: 0,
                 depositAmount1: 0,
+                swapUpdate: {remainingAmount: 0, outAmount: 0, orderFilled: false, tranchesUpdates: Map(), poolUpdates: Map() },
                 error: "both sides BEL"
             }
         else
@@ -691,6 +692,7 @@ module utils {
                         inAmount1: amount1, 
                         depositAmount0: 0,
                         depositAmount1: amount1 + swapResult0To1.outAmount,
+                        swapUpdate: swapResult0To1,
                         error: "nil"
                     }
                 else
@@ -699,6 +701,7 @@ module utils {
                         inAmount1: amount1, 
                         depositAmount0: swapResult0To1.remainingAmount,
                         depositAmount1: amount1 + swapResult0To1.outAmount,
+                        swapUpdate: swapResult0To1,
                         error: "nil"
                     }
             else if (swapResult1To0.outAmount > 0)
@@ -709,6 +712,7 @@ module utils {
                         inAmount1: amount1 - swapResult1To0.remainingAmount, 
                         depositAmount0: amount0 + swapResult1To0.outAmount,
                         depositAmount1: 0,
+                        swapUpdate: swapResult1To0,
                         error: "nil"
                     }
                 else
@@ -717,6 +721,7 @@ module utils {
                         inAmount1: amount1, 
                         depositAmount0: amount0 + swapResult1To0.outAmount,
                         depositAmount1: swapResult1To0.remainingAmount,
+                        swapUpdate: swapResult1To0,
                         error: "nil"
                     }
             else 
@@ -725,6 +730,7 @@ module utils {
                 inAmount1: amount1, 
                 depositAmount0: amount0,
                 depositAmount1: amount1,
+                swapUpdate: {remainingAmount: 0, outAmount: 0, orderFilled: false, tranchesUpdates: Map(), poolUpdates: Map() },
                 error: "nil"
             }
 } // End of module
