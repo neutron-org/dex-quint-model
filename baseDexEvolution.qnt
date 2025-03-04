@@ -63,7 +63,8 @@ module baseDexEvolution {
 
     action depositAction(processResult: (Result, Message) => bool): bool =
         nondet doSwapOnDeposit = oneOf(Set(true, false))
-        nondet doAutoswap = if (doSwapOnDeposit) true else oneOf(Set(true, false))
+        val autoSwapOptions = if (doSwapOnDeposit) Set(true) else Set(true, false)
+        nondet doAutoswap = oneOf(autoSwapOptions)
         
         // Build a set of (Addr, PoolId) tuples containing all the pools whose tokens are
         // the ones of which the creator has >0 coins.

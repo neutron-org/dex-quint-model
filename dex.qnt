@@ -78,12 +78,12 @@ module Dex {
         // This is to disallow a known property violation, as otherwise that one gets found all the time
         if (pool != emptyPool and not(isRatioReasonable(pool.reserves, depositAmounts))) { state: state, error: "Ratio condition not satisfied" } else
 
-        val inAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, depositAmounts)
+        val depositAmountsBeforeAutoswap = computeAmountsDeposit(pool.reserves, depositAmounts)
         // the amounts that need to be swapped
         val residualAmounts = calcAutoswapAmount(depositAmounts, pool.reserves, token0SellTick)
         val performAutoswap: bool = msg.autoswap and (residualAmounts._1 > 0 or residualAmounts._2 > 0)
-        val postAutoswapInAmounts = if (performAutoswap) inAmounts else inAmountsBeforeAutoswap
-        val postAutoswapDepositAmounts = if (performAutoswap) depositAmounts else inAmountsBeforeAutoswap
+        val postAutoswapInAmounts = if (performAutoswap or msg.swapOnDeposit) inAmounts else depositAmountsBeforeAutoswap
+        val postAutoswapDepositAmounts = if (performAutoswap or msg.swapOnDeposit) depositAmounts else depositAmountsBeforeAutoswap
         val autoswapFeeValue = if (performAutoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
         val outShares = computeSharesDeposit(pool.shares, pool.reserves, postAutoswapDepositAmounts, token0SellTick, autoswapFeeValue)
 
@@ -108,7 +108,9 @@ module Dex {
             poolShares: updatedShares,
             pools: updatedPools,
             coins: updatedCoins,
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue),
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue)
+            .trackSwap(state.tranches, state.tranchesShares,  state.poolShares, depositValues.swapUpdate),
+            
         })
     }
 

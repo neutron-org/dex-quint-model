@@ -46,28 +46,43 @@ module postconditions {
        val poolId = getPoolId(pair, token0SellTick, msg.fee)
 
        val reservesBefore = if (before.pools.has(poolId)) before.pools.get(poolId).reserves else (0,0)
-       val reservesAfter = after.pools.get(poolId).reserves
+       val reservesAfter =  after.pools.get(poolId).reserves
        val sharesBefore = if (before.pools.has(poolId)) before.pools.get(poolId).shares else 0
        val sharesAfter = after.pools.get(poolId).shares
-       // Deposit and shares computation considering the optional autoswap
-       val inAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, amounts)
-       val residualAmounts = calcAutoswapAmount(amounts, reservesBefore, token0SellTick)
-       val inAmounts = if (msg.autoswap) amounts else inAmountsBeforeAutoswap
+       // Deposit and shares computation considering the optional autoswap and swapOnDeposit
+       // TODO: this isn't ideal to re-use the SOD function here.
+       val depositValues = if( msg.swapOnDeposit) 
+            swapOnDeposit(before.tranches, before.pools, pair, token0SellTick, msg.fee, amounts._1, amounts._2) 
+            else       
+                {
+                    inAmount0: amounts._1,
+                    inAmount1: amounts._2,  
+                    depositAmount0: amounts._1,
+                    depositAmount1: amounts._2,
+                    swapUpdate: {remainingAmount: 0, outAmount: 0, orderFilled: false, tranchesUpdates: Map(), poolUpdates: Map() },
+                    error: "nil"
+                }
+       val inAmounts = (depositValues.inAmount0, depositValues.inAmount1)
+       val depositAmounts = (depositValues.depositAmount0, depositValues.depositAmount1)
+       val depositAmountsBeforeAutoswap = computeAmountsDeposit(reservesBefore, depositAmounts)
+       val residualAmounts = calcAutoswapAmount(depositAmounts, reservesBefore, token0SellTick)
+       val depositAmountsAfterAutoswap = if (msg.autoswap or msg.swapOnDeposit) depositAmounts else depositAmountsBeforeAutoswap
+       val inAmountsAfterAutoswap = if (msg.autoswap or msg.swapOnDeposit) inAmounts else depositAmountsBeforeAutoswap
        val autoswapFee = if (msg.autoswap) computeAutoswapFeeValue(residualAmounts, token0SellTick, msg.fee) else zero
-       val outShares = computeSharesDeposit(sharesBefore, reservesBefore, inAmounts, token0SellTick, autoswapFee)
+       val outShares = computeSharesDeposit(sharesBefore, reservesBefore, depositAmountsAfterAutoswap, token0SellTick, autoswapFee)
 
        and {
           // Pool exists
           after.pools.has(poolId),
 
           // Reserves are updated
-          reservesAfter._1 == reservesBefore._1 + inAmounts._1,
-          reservesAfter._2 == reservesBefore._2 + inAmounts._2,
+          reservesAfter._1 == reservesBefore._1 + depositAmountsAfterAutoswap._1,
+          reservesAfter._2 == reservesBefore._2 + depositAmountsAfterAutoswap._2,
 
           // Coins are transferred
           after.coins.get((msg.creator, pair._1)) >= 0 and after.coins.get((msg.creator, pair._2)) >= 0,
-          after.coins.get((msg.creator, pair._1)) == before.coins.get((msg.creator, pair._1)) - inAmounts._1,
-          after.coins.get((msg.creator, pair._2)) == before.coins.get((msg.creator, pair._2)) - inAmounts._2,
+          after.coins.get((msg.creator, pair._1)) == before.coins.get((msg.creator, pair._1)) - inAmountsAfterAutoswap._1,
+          after.coins.get((msg.creator, pair._2)) == before.coins.get((msg.creator, pair._2)) - inAmountsAfterAutoswap._2,
 
           // Shares are minted
           after.poolShares.has((msg.creator, poolId)),
