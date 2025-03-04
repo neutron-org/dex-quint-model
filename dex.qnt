@@ -108,7 +108,7 @@ module Dex {
             poolShares: updatedShares,
             pools: updatedPools,
             coins: updatedCoins,
-            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, inAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue)
+            bookkeeping: state.bookkeeping.trackPoolDeposit(msg.creator, poolId, postAutoswapDepositAmounts, performAutoswap, residualAmounts, state.poolShares, token0SellTick, autoswapFeeValue)
             .trackSwap(state.tranches, state.tranchesShares,  state.poolShares, depositValues.swapUpdate),
             
         })
