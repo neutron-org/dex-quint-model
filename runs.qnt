@@ -12,8 +12,8 @@ module runs {
     run test =
         val poolKey1 = { fee: 10, tick: 23027, tokenPair: ("A", "B") }
         val poolKey2 = { fee: 10, tick: 200, tokenPair: ("A", "B") }
-        val msg: DepositMsg = depositMsgPool("Bob", poolKey1, (200, 0), true)
-        val msg2 = depositMsgPool("Carol", poolKey2, (200,0), true)
+        val msg: DepositMsg = depositMsgPool("Bob", poolKey1, (200, 0), true, false)
+        val msg2 = depositMsgPool("Carol", poolKey2, (200,0), true, false)
 
         init
           .then(state' = deposit(state, msg).state)
@@ -22,7 +22,7 @@ module runs {
     run depositLimitInteraction =
         val poolKey = { fee: 39, tick: 130, tokenPair: ("A", "B") }
         init.then(
-            val msg = depositMsgPool("Bob", poolKey, (0, 6071), true)
+            val msg = depositMsgPool("Bob", poolKey, (0, 6071), true, false)
             val res = deposit(state, msg)
             all{
                 state' = res.state,
@@ -69,7 +69,7 @@ module runs {
             }
         )
         .then(
-            val msg: DepositMsg = depositMsgPool("Bob", poolKey, (10, 0), true)
+            val msg: DepositMsg = depositMsgPool("Bob", poolKey, (10, 0), true, false)
             val res = deposit(state, msg)
             state' = res.state
         )
@@ -128,7 +128,7 @@ module runs {
         )
         .then(
             val key1: PoolId = {fee: 5, tick: 104, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (0, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (0, 10), true, false)
             val res = deposit(state, depositMsg)
             all{
                 // not behind enemy lines yet
@@ -138,7 +138,7 @@ module runs {
         )
         .then(
             val key1: PoolId = {fee: 5, tick: 106, tokenPair: ("A", "B")}
-            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (0, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (0, 10), true, false)
             val res = deposit(state, depositMsg)
             all{
                 // now we are behind enemy lines
@@ -148,7 +148,7 @@ module runs {
         )
         .then(
             val key1: PoolId = { fee: 0, tick: 0, tokenPair: ("A", "B") }
-            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 0), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 0), true, false)
             val res = deposit(state, depositMsg)
             all{
                 // again behind enemy lines
@@ -161,7 +161,7 @@ module runs {
         val creator = DEFAULT_CREATOR
         init.then(
             val key1: PoolId = { fee: 5, tick: -100, tokenPair: ("A", "B") }
-            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true, false)
             val res = deposit(state, depositMsg)
             all{
                 assert(res.error == "nil"),
@@ -170,7 +170,7 @@ module runs {
         )
         .then(
             val key1: PoolId = { fee: 3, tick: -100, tokenPair: ("A", "B") }
-            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true, false)
             val res = deposit(state, depositMsg)
             all{
                 assert(res.error == "nil"),
@@ -179,7 +179,7 @@ module runs {
         )
         .then(
             val key1: PoolId = { fee: 5, tick: -80, tokenPair: ("A", "B") }
-            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true)
+            val depositMsg: DepositMsg = depositMsgPool(creator, key1, (10, 10), true, false)
             val res = deposit(state, depositMsg)
             all {
                 state' = res.state,

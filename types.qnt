@@ -40,7 +40,8 @@ module types {
         amountPair: (int, int),
         token0SellTick: TickIndex,
         fee: TickIndex,
-        autoswap: bool
+        autoswap: bool,
+        swapOnDeposit: bool,
     }
 
     type WithdrawPoolMsg = {
@@ -184,7 +185,8 @@ module types {
         remainingAmount: int,
         outAmount: int,
         tranchesUpdates: TrancheKey -> TrancheUpdateDiff,
-        poolUpdates: PoolId -> PoolUpdateDiff
+        poolUpdates: PoolId -> PoolUpdateDiff,
+        orderFilled: bool,
     }
 
     type Result = { state: State, error: str }
